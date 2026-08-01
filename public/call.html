@@ -20,12 +20,14 @@
     .badge { padding: 0.25rem 0.9rem; border-radius: 999px; border: 1px solid #333; font-size: 0.9rem; transition: box-shadow 0.15s, border-color 0.15s; }
     .badge.p0.speaking { border-color: #5da9ff; box-shadow: 0 0 12px #5da9ff88; }
     .badge.p1.speaking { border-color: #63d68c; box-shadow: 0 0 12px #63d68c88; }
+    .badge.p2.speaking { border-color: #c792ea; box-shadow: 0 0 12px #c792ea88; }
     #status { text-align: center; color: #9aa4b2; margin-bottom: 0.75rem; min-height: 1.3rem; }
     #transcript { border: 1px solid #262c36; border-radius: 10px; padding: 1rem; height: 260px; overflow-y: auto; background: #12151b; }
     .line { margin: 0.3rem 0; }
     .line .who { font-weight: 600; margin-right: 0.4rem; }
     .line.p0 .who { color: #5da9ff; }
     .line.p1 .who { color: #63d68c; }
+    .line.p2 .who { color: #c792ea; }
     .line.interim { opacity: 0.5; font-style: italic; }
   </style>
 </head>
@@ -157,7 +159,7 @@
       const loudest = Object.entries(levels).sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
       const level = live ? Math.min(1, loudest[1] * 6) : 0;
       const idx = loudest[0] ? participants.indexOf(loudest[0]) : -1;
-      const hue = !live ? 220 : level > 0.1 ? (idx === 1 ? 140 : 212) : 190;
+      const hue = !live ? 220 : level > 0.1 ? (idx === 2 ? 280 : idx === 1 ? 140 : 212) : 190;
       const sat = live ? 80 : 12;
       const breath = live ? Math.sin(t / 900) * 6 : Math.sin(t / 2200) * 2;
       const base = 78 + breath + level * 46;
