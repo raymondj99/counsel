@@ -2,7 +2,7 @@
 
 html, body {
   height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-serif), Georgia, "Times New Roman", serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -45,13 +45,13 @@ html, body {
 
 .header { text-align: center; }
 .title {
-  font-size: 1.35rem;
-  font-weight: 650;
+  font-size: 1.5rem;
+  font-weight: 550;
   color: var(--ink);
   letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
 }
-.subtitle { margin-top: 0.35rem; font-size: 0.9rem; color: var(--ink-soft); }
+.subtitle { margin-top: 0.4rem; font-size: 0.95rem; font-style: italic; color: var(--ink-soft); }
 
 .orbWrap {
   flex: 1;
@@ -83,11 +83,12 @@ html, body {
   min-height: 2.6rem;
   max-width: 20rem;
   text-align: center;
-  font-size: 0.92rem;
+  font-style: italic;
+  font-size: 0.98rem;
   line-height: 1.4;
   color: var(--ink-soft);
 }
-.caption .who { font-weight: 600; color: var(--ink); }
+.caption .who { font-weight: 600; font-style: normal; color: var(--ink); }
 
 .bar {
   display: flex;
