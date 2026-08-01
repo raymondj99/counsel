@@ -1,6 +1,6 @@
 {
-  "eval_set_version": "1.0",
-  "description": "Grounded couples-therapy scenarios for comparing a minimax-tree engine against plain LLMs. Each scenario gives both partners' profiles and a seed dialogue ending right before the AI agent must respond. Feed the same seed_dialogue + profiles into every model/engine under test, collect the next-turn response, and score against gold_response_criteria / red_flags using the rubric in eval_scoring_rubric.md.",
+  "eval_set_version": "2.0",
+  "description": "Grounded couples-therapy scenarios for comparing a minimax-tree engine against plain LLMs. Personality-type input is the IPIP-50 Big Five inventory (Openness, Conscientiousness, Extraversion, Agreeableness, Emotional Stability) — not MBTI. Each partner's 'personality_type' block is the actual engine input: 5 domain scores on the standard IPIP-50 raw scale (10 items/domain, 1-5 each, so range 10-50; low 10-23, medium 24-36, high 37-50). Note: IPIP-50 scores Emotional Stability, not Neuroticism directly — high emotional_stability = low neuroticism/more stable. 'clinical_context' (attachment style, Gottman conflict style) is narrative grounding only, explaining why the scenario is realistic and what dynamic it's testing — it is NOT part of the engine's input schema, just documentation for scenario designers/raters. Each scenario gives a seed_dialogue ending right before the AI agent must respond. Feed the same personality_type profiles + seed_dialogue into every model/engine under test, collect the next-turn response, and score against gold_response_criteria / red_flags using eval_scoring_rubric.md.",
   "scenarios": [
     {
       "id": "S1_anxious_avoidant_pursuit",
@@ -8,15 +8,17 @@
       "framework_source": "Attachment theory (Pietromonaco et al.); pursuer-distancer dynamic",
       "partner_A": {
         "name": "Maya",
-        "attachment_style": "anxious",
-        "big_five": {"neuroticism": "high", "agreeableness": "high", "extraversion": "medium"},
-        "gottman_conflict_style": "volatile"
+        "personality_type": {
+          "openness": 30, "conscientiousness": 28, "extraversion": 28, "agreeableness": 42, "emotional_stability": 18
+        },
+        "clinical_context": {"attachment_style": "anxious", "gottman_conflict_style": "volatile"}
       },
       "partner_B": {
         "name": "Dev",
-        "attachment_style": "avoidant",
-        "big_five": {"neuroticism": "low", "agreeableness": "medium", "openness": "low"},
-        "gottman_conflict_style": "conflict-avoiding"
+        "personality_type": {
+          "openness": 18, "conscientiousness": 30, "extraversion": 28, "agreeableness": 28, "emotional_stability": 40
+        },
+        "clinical_context": {"attachment_style": "avoidant", "gottman_conflict_style": "conflict-avoiding"}
       },
       "situation": "Dev came home 90 minutes late from drinks with coworkers without texting. Maya has been anxious all evening.",
       "seed_dialogue": [
@@ -27,7 +29,7 @@
       ],
       "known_failure_modes": [
         "agent sides with Maya and frames Dev as 'shutting down communication' without addressing Dev's need for space",
-        "agent sides with Dev and tells Maya she's 'overreacting', invalidating an anxious attachment fear response",
+        "agent sides with Dev and tells Maya she's 'overreacting', invalidating a low-emotional-stability fear response",
         "agent gives generic advice ('communicate better') without naming the pursue-withdraw cycle",
         "agent misses that Dev's 'can we not do this tonight' is an early-stage withdrawal signal, not stonewalling yet"
       ],
@@ -37,7 +39,7 @@
         "validates Dev's need for a short decompression window without endorsing total avoidance",
         "proposes a concrete, bounded next step (e.g., a short check-in now + a fuller conversation at an agreed time) rather than forcing full resolution immediately"
       ],
-      "red_flags": ["taking a side", "pathologizing either partner", "generic 'you both need to communicate' with no structure", "ignoring the attachment profiles entirely"]
+      "red_flags": ["taking a side", "pathologizing either partner", "generic 'you both need to communicate' with no structure", "ignoring the personality_type scores entirely"]
     },
     {
       "id": "S2_volatile_avoidant_finances",
@@ -45,15 +47,17 @@
       "framework_source": "Gottman's five couple conflict styles",
       "partner_A": {
         "name": "Priya",
-        "attachment_style": "secure",
-        "big_five": {"neuroticism": "medium", "extraversion": "high", "conscientiousness": "medium"},
-        "gottman_conflict_style": "volatile"
+        "personality_type": {
+          "openness": 32, "conscientiousness": 30, "extraversion": 42, "agreeableness": 30, "emotional_stability": 30
+        },
+        "clinical_context": {"attachment_style": "secure", "gottman_conflict_style": "volatile"}
       },
       "partner_B": {
         "name": "Sam",
-        "attachment_style": "avoidant",
-        "big_five": {"neuroticism": "low", "conscientiousness": "high", "agreeableness": "medium"},
-        "gottman_conflict_style": "conflict-avoiding"
+        "personality_type": {
+          "openness": 20, "conscientiousness": 44, "extraversion": 24, "agreeableness": 28, "emotional_stability": 40
+        },
+        "clinical_context": {"attachment_style": "avoidant", "gottman_conflict_style": "conflict-avoiding"}
       },
       "situation": "Priya discovered a $2,000 credit card charge Sam didn't mention. Priya wants to hash it out immediately; Sam wants to drop it.",
       "seed_dialogue": [
@@ -81,15 +85,17 @@
       "framework_source": "Gottman flooding / diffuse physiological arousal",
       "partner_A": {
         "name": "Jordan",
-        "attachment_style": "anxious",
-        "big_five": {"neuroticism": "very high", "agreeableness": "medium"},
-        "gottman_conflict_style": "hostile"
+        "personality_type": {
+          "openness": 28, "conscientiousness": 26, "extraversion": 28, "agreeableness": 26, "emotional_stability": 14
+        },
+        "clinical_context": {"attachment_style": "anxious", "gottman_conflict_style": "hostile"}
       },
       "partner_B": {
         "name": "Alex",
-        "attachment_style": "anxious",
-        "big_five": {"neuroticism": "high", "agreeableness": "low"},
-        "gottman_conflict_style": "hostile"
+        "personality_type": {
+          "openness": 26, "conscientiousness": 24, "extraversion": 30, "agreeableness": 18, "emotional_stability": 18
+        },
+        "clinical_context": {"attachment_style": "anxious", "gottman_conflict_style": "hostile"}
       },
       "situation": "An argument about in-laws has escalated over 10 minutes; both partners are talking over each other with rising volume.",
       "seed_dialogue": [
@@ -114,19 +120,21 @@
     },
     {
       "id": "S4_avoidant_avoidant_disengagement",
-      "title": "Two avoidant partners, low-conflict but low-intimacy",
+      "title": "Two low-openness/low-extraversion partners, low-conflict but low-intimacy",
       "framework_source": "Attachment theory; Gottman conflict-avoiding style",
       "partner_A": {
         "name": "Chris",
-        "attachment_style": "avoidant",
-        "big_five": {"extraversion": "low", "openness": "low"},
-        "gottman_conflict_style": "conflict-avoiding"
+        "personality_type": {
+          "openness": 18, "conscientiousness": 30, "extraversion": 16, "agreeableness": 28, "emotional_stability": 36
+        },
+        "clinical_context": {"attachment_style": "avoidant", "gottman_conflict_style": "conflict-avoiding"}
       },
       "partner_B": {
         "name": "Robin",
-        "attachment_style": "avoidant",
-        "big_five": {"extraversion": "low", "agreeableness": "medium"},
-        "gottman_conflict_style": "conflict-avoiding"
+        "personality_type": {
+          "openness": 20, "conscientiousness": 28, "extraversion": 18, "agreeableness": 30, "emotional_stability": 36
+        },
+        "clinical_context": {"attachment_style": "avoidant", "gottman_conflict_style": "conflict-avoiding"}
       },
       "situation": "Both partners agree things are 'fine' but a recent check-in survey shows both privately rated satisfaction low. Neither raises real issues unprompted.",
       "seed_dialogue": [
@@ -135,32 +143,34 @@
         {"speaker": "Chris", "text": "Right. I guess I don't know what we're supposed to talk about."}
       ],
       "known_failure_modes": [
-        "agent accepts 'things are fine' at face value and ends the session, missing the documented risk that conflict-avoiding pairs under-report real issues",
+        "agent accepts 'things are fine' at face value and ends the session, missing the documented risk that low-openness/conflict-avoiding pairs under-report real issues",
         "agent forces high-intensity emotional disclosure inappropriate for this pairing's style, causing shutdown",
         "agent fails to use any low-pressure structured prompt to surface unspoken needs"
       ],
       "gold_response_criteria": [
-        "gently probes past the surface 'we're fine' using a low-pressure, structured, non-confrontational prompt (matches conflict-avoiding style rather than fighting it)",
+        "gently probes past the surface 'we're fine' using a low-pressure, structured, non-confrontational prompt (matches low-extraversion/avoidant style rather than fighting it)",
         "normalizes that calm ≠ fully resolved for this pairing, without implying something is wrong with them",
         "invites one small, low-stakes disclosure rather than demanding a full emotional inventory"
       ],
-      "red_flags": ["accepting 'fine' and moving on", "high-pressure 'tell me how you really feel' demands", "diagnosing the couple as avoidant/broken"]
+      "red_flags": ["accepting 'fine' and moving on", "high-pressure 'tell me how you really feel' demands", "diagnosing the couple as broken"]
     },
     {
       "id": "S5_secure_control",
-      "title": "Secure + secure control scenario",
+      "title": "High-stability, high-agreeableness control scenario",
       "framework_source": "Control condition — tests over-intervention",
       "partner_A": {
         "name": "Noah",
-        "attachment_style": "secure",
-        "big_five": {"neuroticism": "low", "agreeableness": "high"},
-        "gottman_conflict_style": "validating"
+        "personality_type": {
+          "openness": 30, "conscientiousness": 32, "extraversion": 32, "agreeableness": 42, "emotional_stability": 42
+        },
+        "clinical_context": {"attachment_style": "secure", "gottman_conflict_style": "validating"}
       },
       "partner_B": {
         "name": "Elena",
-        "attachment_style": "secure",
-        "big_five": {"neuroticism": "low", "conscientiousness": "high"},
-        "gottman_conflict_style": "validating"
+        "personality_type": {
+          "openness": 30, "conscientiousness": 44, "extraversion": 30, "agreeableness": 40, "emotional_stability": 42
+        },
+        "clinical_context": {"attachment_style": "secure", "gottman_conflict_style": "validating"}
       },
       "situation": "Minor disagreement about weekend plans; both partners are already handling it well.",
       "seed_dialogue": [
@@ -186,15 +196,17 @@
       "framework_source": "Gottman bids for connection / turning toward-away-against",
       "partner_A": {
         "name": "Tasha",
-        "attachment_style": "anxious",
-        "big_five": {"agreeableness": "high", "neuroticism": "medium"},
-        "gottman_conflict_style": "validating"
+        "personality_type": {
+          "openness": 30, "conscientiousness": 28, "extraversion": 32, "agreeableness": 42, "emotional_stability": 28
+        },
+        "clinical_context": {"attachment_style": "anxious", "gottman_conflict_style": "validating"}
       },
       "partner_B": {
         "name": "Ben",
-        "attachment_style": "secure",
-        "big_five": {"conscientiousness": "high"},
-        "gottman_conflict_style": "validating"
+        "personality_type": {
+          "openness": 28, "conscientiousness": 42, "extraversion": 30, "agreeableness": 34, "emotional_stability": 38
+        },
+        "clinical_context": {"attachment_style": "secure", "gottman_conflict_style": "validating"}
       },
       "situation": "Mid-disagreement about chores, Tasha makes a small bid for connection (humor) that Ben misses by staying on-topic.",
       "seed_dialogue": [
@@ -219,15 +231,17 @@
       "framework_source": "Gottman Four Horsemen — criticism and contempt",
       "partner_A": {
         "name": "Marcus",
-        "attachment_style": "avoidant",
-        "big_five": {"neuroticism": "medium", "agreeableness": "low"},
-        "gottman_conflict_style": "hostile-detached"
+        "personality_type": {
+          "openness": 26, "conscientiousness": 28, "extraversion": 26, "agreeableness": 18, "emotional_stability": 26
+        },
+        "clinical_context": {"attachment_style": "avoidant", "gottman_conflict_style": "hostile-detached"}
       },
       "partner_B": {
         "name": "Lily",
-        "attachment_style": "anxious",
-        "big_five": {"neuroticism": "high"},
-        "gottman_conflict_style": "hostile"
+        "personality_type": {
+          "openness": 28, "conscientiousness": 26, "extraversion": 28, "agreeableness": 24, "emotional_stability": 16
+        },
+        "clinical_context": {"attachment_style": "anxious", "gottman_conflict_style": "hostile"}
       },
       "situation": "Discussion about Marcus forgetting an anniversary dinner reservation.",
       "seed_dialogue": [
@@ -236,7 +250,7 @@
         {"speaker": "Lily", "text": "Honestly? Sometimes I wonder why I even bother planning anything with someone this careless."}
       ],
       "known_failure_modes": [
-        "agent addresses only the surface content (the forgotten reservation) and misses the escalation from criticism ('you never') to contempt-adjacent language ('someone this careless', sarcastic eye-roll energy in Marcus's reply)",
+        "agent addresses only the surface content (the forgotten reservation) and misses the escalation from criticism ('you never') to contempt-adjacent language ('someone this careless', sarcastic tone in Marcus's reply)",
         "agent fails to distinguish criticism (Lily's first line) from Marcus's sarcastic defensiveness from Lily's contemptuous escalation (third line)",
         "agent doesn't offer the specific antidotes (gentle start-up, culture of appreciation) tied to each horseman"
       ],
@@ -253,15 +267,17 @@
       "framework_source": "Christensen demand-withdraw research (topic-specific asymmetry)",
       "partner_A": {
         "name": "Fatima",
-        "attachment_style": "anxious",
-        "big_five": {"conscientiousness": "high", "neuroticism": "medium"},
-        "gottman_conflict_style": "volatile"
+        "personality_type": {
+          "openness": 28, "conscientiousness": 42, "extraversion": 30, "agreeableness": 32, "emotional_stability": 26
+        },
+        "clinical_context": {"attachment_style": "anxious", "gottman_conflict_style": "volatile"}
       },
       "partner_B": {
         "name": "Owen",
-        "attachment_style": "avoidant",
-        "big_five": {"openness": "low"},
-        "gottman_conflict_style": "conflict-avoiding"
+        "personality_type": {
+          "openness": 16, "conscientiousness": 30, "extraversion": 24, "agreeableness": 28, "emotional_stability": 34
+        },
+        "clinical_context": {"attachment_style": "avoidant", "gottman_conflict_style": "conflict-avoiding"}
       },
       "situation": "Fatima wants to discuss Owen's lack of involvement in wedding planning (Fatima's issue); Owen typically engages fine on his own topics (e.g. finances) but withdraws here.",
       "seed_dialogue": [
@@ -272,7 +288,7 @@
       ],
       "known_failure_modes": [
         "agent treats this as a generic communication problem rather than the specific, well-documented topic-linked demand-withdraw pattern",
-        "agent assumes Owen is avoidant/withdrawing across the board, when the profile specifies it's specific to this topic",
+        "agent assumes Owen withdraws across the board, when the scenario specifies it's specific to this topic",
         "agent puts full responsibility on Owen to 'just engage more' without addressing why this particular topic triggers withdrawal"
       ],
       "gold_response_criteria": [
