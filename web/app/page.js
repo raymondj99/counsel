@@ -23,6 +23,28 @@ export default function Home() {
   mutedRef.current = muted;
   liveRef.current = live;
 
+  /* The orb inherits its palette from the painting: sample three zones. */
+  useEffect(() => {
+    const img = new Image();
+    img.src = "/monet.jpg";
+    img.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = c.height = 60;
+      const ctx = c.getContext("2d");
+      ctx.drawImage(img, 0, 0, 60, 60);
+      const avg = (x, y, w, h) => {
+        const d = ctx.getImageData(x, y, w, h).data;
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+        return `rgb(${(r / n) | 0}, ${(g / n) | 0}, ${(b / n) | 0})`;
+      };
+      const root = document.documentElement.style;
+      root.setProperty("--orb-a", avg(6, 6, 22, 22));    // upper light zone
+      root.setProperty("--orb-b", avg(20, 24, 24, 24));  // center
+      root.setProperty("--orb-c", avg(30, 40, 24, 16));  // lower shade
+    };
+  }, []);
+
   /* Orb animation: gentle breathing, swells with whoever is speaking. */
   useEffect(() => {
     let raf;
@@ -92,6 +114,7 @@ export default function Home() {
     <>
       <div className="backdrop" />
       <main className="screen">
+        <div className="card">
         <header className="header">
           <div className="title">{joined && live ? `${name} ${mmss}` : "Counsel"}</div>
           <div className="subtitle">{status || "a quiet place to talk"}</div>
@@ -131,6 +154,7 @@ export default function Home() {
             <button onClick={join}>Join call</button>
           </div>
         )}
+        </div>
       </main>
     </>
   );
