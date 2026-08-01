@@ -26,9 +26,9 @@ export default function Home() {
   /* Orb wears one of three saturated coats: light green, lily pink, sky blue. */
   useEffect(() => {
     const palettes = [
-      { a: "#aeeebc", b: "#67d987", c: "#38a75f" }, // saturated light green
-      { a: "#f2c3d0", b: "#e18fa9", c: "#b25e7d" }, // lily pink
-      { a: "#aadcf9", b: "#58baf0", c: "#2a89c7" }, // saturated sky blue
+      { a: "#e6e9c8", b: "#c9cf9c", c: "#a2a96f" }, // pastel olive green
+      { a: "#f7d8e1", b: "#eebac9", c: "#d495a9" }, // pastel pink
+      { a: "#d3e9f8", b: "#aed4ee", c: "#84b3d4" }, // pastel sky blue
     ];
     const p = palettes[Math.floor(Math.random() * palettes.length)];
     const root = document.documentElement.style;
