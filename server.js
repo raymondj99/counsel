@@ -163,18 +163,20 @@ const MEDIATOR = "Mediator";
 const TTS_URL = "https://api.inworld.ai/tts/v1/voice";
 const TTS_MODEL = process.env.INWORLD_TTS_MODEL ?? "inworld-tts-1";
 const TTS_VOICE = process.env.INWORLD_TTS_VOICE ?? "Ashley";
-const MEDIATOR_SILENCE_MS = 2500;      // wait for a lull before considering an interjection
+const MEDIATOR_SILENCE_MS = 2000;      // wait for a lull before considering an interjection
 const MEDIATOR_COOLDOWN_MS = 20000;    // minimum gap between interjections
 const MEDIATOR_MIN_LINES = 2;          // new final lines required before considering
 
 const MEDIATOR_PROMPT =
-  "You are the Mediator, a calm, impartial third voice silently listening to a live " +
-  "voice call between two people. You only speak when it genuinely helps: defusing " +
-  "tension, clarifying a misunderstanding, making sure both sides are heard, or " +
-  "summarizing an agreement. You receive the recent transcript. If there is no real " +
-  "need to speak right now, reply with exactly PASS. Otherwise reply with the words " +
-  "you would say aloud: one or two short, neutral, conversational sentences. Never " +
-  "take sides, never lecture, and never include stage directions or speaker tags.";
+  "You are the Mediator, a calm, impartial third voice listening to a live voice " +
+  "call between two people. Speak when it helps: defusing tension, clarifying a " +
+  "misunderstanding, making sure both sides are heard, summarizing progress, or " +
+  "nudging a stalled conversation forward with a brief question. You receive the " +
+  "recent transcript; one speaker may dominate — gently invite the quieter one in. " +
+  "If speaking now would add nothing, reply with exactly PASS. Otherwise reply with " +
+  "the words you would say aloud: one or two short, neutral, conversational " +
+  "sentences. Never take sides, never lecture, and never include stage directions " +
+  "or speaker tags.";
 
 const mediator = { timer: null, busy: false, lastSpokeAt: 0, pendingLines: 0 };
 
@@ -242,8 +244,12 @@ async function mediatorConsider() {
     });
     if (!res.ok) throw new Error(`Inworld API ${res.status}: ${await res.text()}`);
     const reply = (await res.json()).choices[0].message.content.trim();
-    if (!reply || /^PASS\b/i.test(reply)) return;
+    if (!reply || /^PASS\b/i.test(reply)) {
+      console.log("Mediator considered, passed.");
+      return;
+    }
     if (!room.live) return;
+    console.log(`Mediator interjecting: ${reply}`);
 
     room.transcript.push(`${MEDIATOR}: ${reply}`);
     broadcast({ type: "transcript", user: MEDIATOR, text: reply, final: true });
