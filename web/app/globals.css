@@ -1,0 +1,114 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: url("/monet.jpg") center / cover no-repeat;
+}
+.backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(245, 244, 238, 0.72);
+  backdrop-filter: blur(2px);
+}
+
+.screen {
+  position: relative;
+  z-index: 1;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2rem 1rem;
+}
+
+.header { text-align: center; }
+.title { font-size: 1.6rem; font-weight: 700; color: #5c6637; }
+.subtitle { margin-top: 0.25rem; font-size: 0.95rem; color: #a3ab84; }
+
+.orbWrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.75rem;
+}
+
+.orb {
+  width: min(46vw, 300px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #c6cba0, #a9b183 62%, #9aa376);
+  box-shadow: 0 24px 70px rgba(92, 102, 55, 0.25);
+  transition: filter 0.4s;
+  will-change: transform;
+}
+.orb.off { filter: saturate(0.25) brightness(1.04); }
+
+.caption {
+  min-height: 1.5rem;
+  max-width: 34rem;
+  text-align: center;
+  font-size: 1rem;
+  color: #6b7355;
+}
+.caption .who { font-weight: 600; }
+
+.bar {
+  display: flex;
+  gap: 2.5rem;
+  align-items: center;
+  padding: 0.9rem 2.2rem;
+  border-radius: 16px;
+  background: rgba(244, 246, 228, 0.9);
+  box-shadow: 0 8px 30px rgba(60, 70, 30, 0.12);
+}
+.bar button {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: none;
+  background: none;
+  font-size: 1.05rem;
+  color: #3d4429;
+  cursor: pointer;
+}
+.dot { width: 14px; height: 14px; border-radius: 4px; background: #e05563; }
+.mic { color: #5c6637; font-size: 1.1rem; }
+.muted { opacity: 0.45; text-decoration: line-through; }
+
+.join {
+  display: flex;
+  gap: 0.6rem;
+  background: rgba(244, 246, 228, 0.92);
+  padding: 1rem 1.2rem;
+  border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(60, 70, 30, 0.12);
+}
+.join input {
+  font-size: 1rem;
+  padding: 0.6rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid #cdd3b4;
+  background: #fdfdf9;
+  color: #3d4429;
+  outline: none;
+}
+.join button {
+  font-size: 1rem;
+  padding: 0.6rem 1.2rem;
+  border-radius: 10px;
+  border: none;
+  background: #5c6637;
+  color: #f4f6e4;
+  cursor: pointer;
+}
