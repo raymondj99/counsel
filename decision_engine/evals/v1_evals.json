@@ -1,0 +1,286 @@
+{
+  "eval_set_version": "1.0",
+  "description": "Grounded couples-therapy scenarios for comparing a minimax-tree engine against plain LLMs. Each scenario gives both partners' profiles and a seed dialogue ending right before the AI agent must respond. Feed the same seed_dialogue + profiles into every model/engine under test, collect the next-turn response, and score against gold_response_criteria / red_flags using the rubric in eval_scoring_rubric.md.",
+  "scenarios": [
+    {
+      "id": "S1_anxious_avoidant_pursuit",
+      "title": "Anxious pursuit vs. avoidant withdrawal after a late night out",
+      "framework_source": "Attachment theory (Pietromonaco et al.); pursuer-distancer dynamic",
+      "partner_A": {
+        "name": "Maya",
+        "attachment_style": "anxious",
+        "big_five": {"neuroticism": "high", "agreeableness": "high", "extraversion": "medium"},
+        "gottman_conflict_style": "volatile"
+      },
+      "partner_B": {
+        "name": "Dev",
+        "attachment_style": "avoidant",
+        "big_five": {"neuroticism": "low", "agreeableness": "medium", "openness": "low"},
+        "gottman_conflict_style": "conflict-avoiding"
+      },
+      "situation": "Dev came home 90 minutes late from drinks with coworkers without texting. Maya has been anxious all evening.",
+      "seed_dialogue": [
+        {"speaker": "Maya", "text": "You didn't even text me. Do you know how many times I checked my phone? I thought something happened to you."},
+        {"speaker": "Dev", "text": "I'm home now, I'm fine. Can we not do this tonight?"},
+        {"speaker": "Maya", "text": "That's not an answer. Why do you always shut me out when I'm trying to tell you how I feel?"},
+        {"speaker": "Dev", "text": "Because every time I walk in the door you're already upset. I just need a minute."}
+      ],
+      "known_failure_modes": [
+        "agent sides with Maya and frames Dev as 'shutting down communication' without addressing Dev's need for space",
+        "agent sides with Dev and tells Maya she's 'overreacting', invalidating an anxious attachment fear response",
+        "agent gives generic advice ('communicate better') without naming the pursue-withdraw cycle",
+        "agent misses that Dev's 'can we not do this tonight' is an early-stage withdrawal signal, not stonewalling yet"
+      ],
+      "gold_response_criteria": [
+        "names or implicitly addresses the cycle: pursuit intensifying withdrawal and vice versa, without blaming either partner's temperament",
+        "validates Maya's underlying fear (abandonment/safety) separately from the behavior (repeated questioning)",
+        "validates Dev's need for a short decompression window without endorsing total avoidance",
+        "proposes a concrete, bounded next step (e.g., a short check-in now + a fuller conversation at an agreed time) rather than forcing full resolution immediately"
+      ],
+      "red_flags": ["taking a side", "pathologizing either partner", "generic 'you both need to communicate' with no structure", "ignoring the attachment profiles entirely"]
+    },
+    {
+      "id": "S2_volatile_avoidant_finances",
+      "title": "Volatile vs. conflict-avoiding mismatch over money",
+      "framework_source": "Gottman's five couple conflict styles",
+      "partner_A": {
+        "name": "Priya",
+        "attachment_style": "secure",
+        "big_five": {"neuroticism": "medium", "extraversion": "high", "conscientiousness": "medium"},
+        "gottman_conflict_style": "volatile"
+      },
+      "partner_B": {
+        "name": "Sam",
+        "attachment_style": "avoidant",
+        "big_five": {"neuroticism": "low", "conscientiousness": "high", "agreeableness": "medium"},
+        "gottman_conflict_style": "conflict-avoiding"
+      },
+      "situation": "Priya discovered a $2,000 credit card charge Sam didn't mention. Priya wants to hash it out immediately; Sam wants to drop it.",
+      "seed_dialogue": [
+        {"speaker": "Priya", "text": "We are talking about this right now, Sam. Two thousand dollars and you said nothing?"},
+        {"speaker": "Sam", "text": "It's handled. I paid it off already. Can we just move on?"},
+        {"speaker": "Priya", "text": "That is not the point! The point is you hid it from me. I want to actually talk through this, not sweep it under the rug like you always do."},
+        {"speaker": "Sam", "text": "There's nothing to talk through. I don't see why this has to become a whole thing."}
+      ],
+      "known_failure_modes": [
+        "agent frames Priya's directness/intensity as itself the problem ('you're being too aggressive'), misreading a stable volatile style as hostility",
+        "agent frames Sam's avoidance as pure evasiveness rather than a documented, valid-if-mismatched conflict style",
+        "agent tries to force a single 'right' amount of conflict engagement instead of negotiating a shared ritual both styles can tolerate",
+        "agent ignores the secrecy/trust breach and jumps straight to communication-style coaching"
+      ],
+      "gold_response_criteria": [
+        "distinguishes the trust/transparency issue (hidden charge) from the conflict-style mismatch (wants to engage vs. wants to disengage) and addresses both",
+        "offers a structure that respects both styles, e.g. a time-boxed discussion now with a defined end point",
+        "does not tell either partner their natural conflict style is wrong, only that the mismatch needs a negotiated process"
+      ],
+      "red_flags": ["moralizing about the money itself", "one-size-fits-all 'always fully engage' advice", "dismissing Sam's avoidance as pathological"]
+    },
+    {
+      "id": "S3_high_neuroticism_flooding",
+      "title": "Escalation toward physiological flooding",
+      "framework_source": "Gottman flooding / diffuse physiological arousal",
+      "partner_A": {
+        "name": "Jordan",
+        "attachment_style": "anxious",
+        "big_five": {"neuroticism": "very high", "agreeableness": "medium"},
+        "gottman_conflict_style": "hostile"
+      },
+      "partner_B": {
+        "name": "Alex",
+        "attachment_style": "anxious",
+        "big_five": {"neuroticism": "high", "agreeableness": "low"},
+        "gottman_conflict_style": "hostile"
+      },
+      "situation": "An argument about in-laws has escalated over 10 minutes; both partners are talking over each other with rising volume.",
+      "seed_dialogue": [
+        {"speaker": "Jordan", "text": "Your mother has said that to me three times now and you just sit there and let her!"},
+        {"speaker": "Alex", "text": "Oh here we go again, you bring this up every single time we see them, it's exhausting!"},
+        {"speaker": "Jordan", "text": "Exhausting?! I'm exhausted defending myself to your entire family while you say NOTHING!"},
+        {"speaker": "Alex", "text": "Maybe if you weren't so sensitive about everything I wouldn't have to constantly manage you around them!"}
+      ],
+      "known_failure_modes": [
+        "agent continues trying to resolve the in-law content issue instead of recognizing escalating flooding",
+        "agent fails to flag the contempt-adjacent language ('so sensitive about everything', 'constantly manage you')",
+        "agent asks an open-ended question that invites further escalation instead of interrupting the cycle",
+        "agent doesn't propose a concrete break/self-soothing protocol"
+      ],
+      "gold_response_criteria": [
+        "recognizes rising physiological arousal cues (volume, interruption, absolutist language 'always/never/NOTHING') and interrupts the escalation rather than continuing content-level mediation",
+        "names the contempt-adjacent phrasing without shaming either speaker",
+        "proposes a concrete de-escalation step: a timed break (~20+ min) with an agreed return time, per Gottman protocol",
+        "does not attempt to resolve the in-law issue itself in this turn"
+      ],
+      "red_flags": ["asking 'why do you feel that way' mid-flood", "trying to adjudicate who's right about the in-laws", "no de-escalation mechanism offered"]
+    },
+    {
+      "id": "S4_avoidant_avoidant_disengagement",
+      "title": "Two avoidant partners, low-conflict but low-intimacy",
+      "framework_source": "Attachment theory; Gottman conflict-avoiding style",
+      "partner_A": {
+        "name": "Chris",
+        "attachment_style": "avoidant",
+        "big_five": {"extraversion": "low", "openness": "low"},
+        "gottman_conflict_style": "conflict-avoiding"
+      },
+      "partner_B": {
+        "name": "Robin",
+        "attachment_style": "avoidant",
+        "big_five": {"extraversion": "low", "agreeableness": "medium"},
+        "gottman_conflict_style": "conflict-avoiding"
+      },
+      "situation": "Both partners agree things are 'fine' but a recent check-in survey shows both privately rated satisfaction low. Neither raises real issues unprompted.",
+      "seed_dialogue": [
+        {"speaker": "Chris", "text": "I mean, we don't really fight, so I don't think there's a problem."},
+        {"speaker": "Robin", "text": "Yeah, things are pretty calm. I don't really have anything to add."},
+        {"speaker": "Chris", "text": "Right. I guess I don't know what we're supposed to talk about."}
+      ],
+      "known_failure_modes": [
+        "agent accepts 'things are fine' at face value and ends the session, missing the documented risk that conflict-avoiding pairs under-report real issues",
+        "agent forces high-intensity emotional disclosure inappropriate for this pairing's style, causing shutdown",
+        "agent fails to use any low-pressure structured prompt to surface unspoken needs"
+      ],
+      "gold_response_criteria": [
+        "gently probes past the surface 'we're fine' using a low-pressure, structured, non-confrontational prompt (matches conflict-avoiding style rather than fighting it)",
+        "normalizes that calm ≠ fully resolved for this pairing, without implying something is wrong with them",
+        "invites one small, low-stakes disclosure rather than demanding a full emotional inventory"
+      ],
+      "red_flags": ["accepting 'fine' and moving on", "high-pressure 'tell me how you really feel' demands", "diagnosing the couple as avoidant/broken"]
+    },
+    {
+      "id": "S5_secure_control",
+      "title": "Secure + secure control scenario",
+      "framework_source": "Control condition — tests over-intervention",
+      "partner_A": {
+        "name": "Noah",
+        "attachment_style": "secure",
+        "big_five": {"neuroticism": "low", "agreeableness": "high"},
+        "gottman_conflict_style": "validating"
+      },
+      "partner_B": {
+        "name": "Elena",
+        "attachment_style": "secure",
+        "big_five": {"neuroticism": "low", "conscientiousness": "high"},
+        "gottman_conflict_style": "validating"
+      },
+      "situation": "Minor disagreement about weekend plans; both partners are already handling it well.",
+      "seed_dialogue": [
+        {"speaker": "Noah", "text": "I know you wanted a quiet weekend, but I already told my brother we'd visit. I should have checked with you first."},
+        {"speaker": "Elena", "text": "Yeah, I wish you'd asked, but I get it, family stuff comes up. Can we do a quiet Sunday instead to make up for it?"},
+        {"speaker": "Noah", "text": "That works for me. Sorry again."}
+      ],
+      "known_failure_modes": [
+        "agent over-intervenes, injecting therapy-speak or unsolicited frameworks into a conversation that's already resolving well",
+        "agent manufactures a deeper conflict that isn't there",
+        "agent fails to recognize successful repair already in progress (Noah's ownership + Elena's compromise) and doesn't reinforce it"
+      ],
+      "gold_response_criteria": [
+        "minimal intervention — brief acknowledgment/reinforcement of the successful repair (ownership + compromise) rather than redirecting",
+        "does not introduce new conflict framing or diagnostic language",
+        "if it responds at all, keeps it short and affirming"
+      ],
+      "red_flags": ["heavy therapeutic scaffolding for a non-problem", "inventing unmet needs neither partner expressed", "long response length disproportionate to the stakes"]
+    },
+    {
+      "id": "S6_bid_missed_repair",
+      "title": "Missed bid for connection mid-argument",
+      "framework_source": "Gottman bids for connection / turning toward-away-against",
+      "partner_A": {
+        "name": "Tasha",
+        "attachment_style": "anxious",
+        "big_five": {"agreeableness": "high", "neuroticism": "medium"},
+        "gottman_conflict_style": "validating"
+      },
+      "partner_B": {
+        "name": "Ben",
+        "attachment_style": "secure",
+        "big_five": {"conscientiousness": "high"},
+        "gottman_conflict_style": "validating"
+      },
+      "situation": "Mid-disagreement about chores, Tasha makes a small bid for connection (humor) that Ben misses by staying on-topic.",
+      "seed_dialogue": [
+        {"speaker": "Tasha", "text": "I just feel like I'm doing all the dishes lately... also, remember when you tried to load the dishwasher like a Tetris champion and it all fell out? Ha."},
+        {"speaker": "Ben", "text": "Anyway, I think we should just split it by day of the week, that's simpler."},
+        {"speaker": "Tasha", "text": "...sure, day of the week works I guess."}
+      ],
+      "known_failure_modes": [
+        "agent focuses only on the logistical chore-split content and never flags the missed bid",
+        "agent misreads Tasha's flattened 'sure, works I guess' as agreement rather than a minor disconnection signal"
+      ],
+      "gold_response_criteria": [
+        "notices the missed humor bid and Tasha's subsequent flattened tone as a turning-away moment",
+        "creates space for a brief repair (acknowledging the joke / reconnecting) before finalizing the logistics",
+        "still allows the practical chore-split conversation to proceed once the repair is made"
+      ],
+      "red_flags": ["treating the exchange as purely logistical", "not distinguishing genuine agreement from resigned/flattened agreement"]
+    },
+    {
+      "id": "S7_criticism_to_contempt_escalation",
+      "title": "Criticism sliding into contempt",
+      "framework_source": "Gottman Four Horsemen — criticism and contempt",
+      "partner_A": {
+        "name": "Marcus",
+        "attachment_style": "avoidant",
+        "big_five": {"neuroticism": "medium", "agreeableness": "low"},
+        "gottman_conflict_style": "hostile-detached"
+      },
+      "partner_B": {
+        "name": "Lily",
+        "attachment_style": "anxious",
+        "big_five": {"neuroticism": "high"},
+        "gottman_conflict_style": "hostile"
+      },
+      "situation": "Discussion about Marcus forgetting an anniversary dinner reservation.",
+      "seed_dialogue": [
+        {"speaker": "Lily", "text": "You forgot the reservation. Again. You never think about anyone but yourself."},
+        {"speaker": "Marcus", "text": "Wow, real mature. Guess I'm just the world's worst husband, huh?"},
+        {"speaker": "Lily", "text": "Honestly? Sometimes I wonder why I even bother planning anything with someone this careless."}
+      ],
+      "known_failure_modes": [
+        "agent addresses only the surface content (the forgotten reservation) and misses the escalation from criticism ('you never') to contempt-adjacent language ('someone this careless', sarcastic eye-roll energy in Marcus's reply)",
+        "agent fails to distinguish criticism (Lily's first line) from Marcus's sarcastic defensiveness from Lily's contemptuous escalation (third line)",
+        "agent doesn't offer the specific antidotes (gentle start-up, culture of appreciation) tied to each horseman"
+      ],
+      "gold_response_criteria": [
+        "identifies the specific horsemen present: criticism ('you never think about anyone but yourself'), sarcastic defensiveness (Marcus), and contempt-adjacent escalation (Lily's third line)",
+        "interrupts before further escalation, addressing the pattern rather than relitigating the missed reservation",
+        "offers a concrete reframe example (e.g., converting 'you never think about anyone but yourself' into a specific, behavior-focused statement)"
+      ],
+      "red_flags": ["only discussing the reservation logistics", "failing to name the contempt-adjacent language", "generic 'let's all calm down' with no specific antidote"]
+    },
+    {
+      "id": "S8_demand_withdraw_topic_specific",
+      "title": "Demand-withdraw specific to one partner's issue",
+      "framework_source": "Christensen demand-withdraw research (topic-specific asymmetry)",
+      "partner_A": {
+        "name": "Fatima",
+        "attachment_style": "anxious",
+        "big_five": {"conscientiousness": "high", "neuroticism": "medium"},
+        "gottman_conflict_style": "volatile"
+      },
+      "partner_B": {
+        "name": "Owen",
+        "attachment_style": "avoidant",
+        "big_five": {"openness": "low"},
+        "gottman_conflict_style": "conflict-avoiding"
+      },
+      "situation": "Fatima wants to discuss Owen's lack of involvement in wedding planning (Fatima's issue); Owen typically engages fine on his own topics (e.g. finances) but withdraws here.",
+      "seed_dialogue": [
+        {"speaker": "Fatima", "text": "I've sent you three vendor lists and you haven't looked at any of them. This is our wedding too."},
+        {"speaker": "Owen", "text": "I'll look at them eventually, I've just been busy."},
+        {"speaker": "Fatima", "text": "You always say that. I need you to actually engage with this, not just tell me you will."},
+        {"speaker": "Owen", "text": "Can we talk about this later? I really don't want to get into it right now."}
+      ],
+      "known_failure_modes": [
+        "agent treats this as a generic communication problem rather than the specific, well-documented topic-linked demand-withdraw pattern",
+        "agent assumes Owen is avoidant/withdrawing across the board, when the profile specifies it's specific to this topic",
+        "agent puts full responsibility on Owen to 'just engage more' without addressing why this particular topic triggers withdrawal"
+      ],
+      "gold_response_criteria": [
+        "recognizes the pattern as specific to Fatima's issue (wedding planning) rather than a global trait, per Christensen's topic-specific finding",
+        "explores what makes this topic specifically aversive for Owen (e.g., overwhelm, feeling judged) rather than assuming general avoidance",
+        "proposes a concrete small commitment (e.g., one vendor list, one sitting, time-boxed) rather than an open-ended 'engage more' ask"
+      ],
+      "red_flags": ["framing Owen as a globally withdrawn/uninvolved partner", "no concrete, bounded next step", "putting all the behavior-change burden on one partner without addressing the topic-specific trigger"]
+    }
+  ]
+}
