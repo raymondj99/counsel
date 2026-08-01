@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chat with Nova</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    #picker button { font-size: 1rem; padding: 0.5rem 1.5rem; margin-right: 0.5rem; cursor: pointer; }
+    #chat { display: none; }
+    #messages { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; height: 400px; overflow-y: auto; margin-bottom: 0.75rem; }
+    .msg { margin: 0.4rem 0; padding: 0.5rem 0.75rem; border-radius: 8px; max-width: 85%; white-space: pre-wrap; }
+    .user { background: #d0e7ff; margin-left: auto; }
+    .assistant { background: #eee; }
+    .pending { opacity: 0.5; font-style: italic; }
+    form { display: flex; gap: 0.5rem; }
+    input { flex: 1; font-size: 1rem; padding: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Chat with Nova</h1>
+
+  <div id="picker">
+    <p>Who are you?</p>
+    <button data-user="alice">Alice</button>
+    <button data-user="bob">Bob</button>
+  </div>
+
+  <div id="chat">
+    <p>Signed in as <strong id="whoami"></strong></p>
+    <div id="messages"></div>
+    <form id="form">
+      <input id="input" autocomplete="off" placeholder="Say something…" />
+      <button>Send</button>
+    </form>
+  </div>
+
+  <script>
+    let userId = null;
+    const messages = document.getElementById("messages");
+
+    function addMsg(role, text, pending = false) {
+      const div = document.createElement("div");
+      div.className = "msg " + role + (pending ? " pending" : "");
+      div.textContent = text;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+      return div;
+    }
+
+    document.querySelectorAll("#picker button").forEach((btn) => {
+      btn.onclick = async () => {
+        userId = btn.dataset.user;
+        document.getElementById("picker").style.display = "none";
+        document.getElementById("chat").style.display = "block";
+        document.getElementById("whoami").textContent = userId;
+        const history = await (await fetch("/history?user=" + userId)).json();
+        for (const m of history) {
+          addMsg(m.role, m.content.replace(/^\[\w+\] /, ""));
+        }
+        document.getElementById("input").focus();
+      };
+    });
+
+    document.getElementById("form").onsubmit = async (e) => {
+      e.preventDefault();
+      const input = document.getElementById("input");
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+      addMsg("user", text);
+      const pending = addMsg("assistant", "Nova is thinking…", true);
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, message: text }),
+        });
+        const data = await res.json();
+        pending.classList.remove("pending");
+        pending.textContent = res.ok ? data.reply : "Error: " + data.error;
+      } catch (err) {
+        pending.textContent = "Error: " + err.message;
+      }
+    };
+  </script>
+</body>
+</html>
