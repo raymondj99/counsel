@@ -5,13 +5,13 @@ import path from "node:path";
 
 const PORT = process.env.PORT ?? 3000;
 const API_KEY = process.env.INWORLD_API_KEY;
-const MODEL = process.env.INWORLD_MODEL ?? "openai/gpt-5.2";
+const MODEL = process.env.INWORLD_MODEL ?? "openai/gpt-4o-mini";
 const INWORLD_URL = "https://api.inworld.ai/v1/chat/completions";
 
 const SYSTEM_PROMPT =
   "You are Nova, a friendly and concise assistant shared by a small team. " +
-  "You are told which user is speaking at the start of each message. " +
-  "Keep replies short and conversational.";
+  "Each user message starts with a [name] tag telling you who is speaking. " +
+  "Never include a [name] tag in your own replies. Keep replies short and conversational.";
 
 if (!API_KEY) {
   console.error("Missing INWORLD_API_KEY. Get one at https://platform.inworld.ai/api-keys");
