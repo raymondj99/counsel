@@ -7,9 +7,9 @@ html, body {
 }
 
 :root {
-  --orb-a: #c9d3c2;
-  --orb-b: #9db4a8;
-  --orb-c: #7e97a3;
+  --orb-a: #f2c3d0;  /* lily pink — light petal */
+  --orb-b: #e18fa9;
+  --orb-c: #b25e7d;  /* deep rose shade */
   --ink: #2f3330;
   --ink-soft: #8a918b;
 }
