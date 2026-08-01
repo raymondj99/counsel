@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Counsel Call</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: system-ui, sans-serif; background: #0e1116; color: #e6e6e6; max-width: 720px; margin: 0 auto; padding: 1.5rem 1rem; }
+    h1 { font-size: 1.3rem; margin-bottom: 1rem; }
+    #join { display: flex; gap: 0.5rem; }
+    input, button { font-size: 1rem; padding: 0.6rem 1rem; border-radius: 8px; border: 1px solid #333; background: #171b22; color: #e6e6e6; }
+    button { cursor: pointer; }
+    button:hover { background: #222835; }
+    #stage { display: none; }
+    #avatar-wrap { display: flex; flex-direction: column; align-items: center; margin: 1rem 0; }
+    canvas { width: 220px; height: 220px; }
+    #speaker { height: 1.4rem; color: #9aa4b2; font-size: 0.95rem; }
+    #roster { display: flex; gap: 1rem; justify-content: center; margin-bottom: 0.5rem; }
+    .badge { padding: 0.25rem 0.9rem; border-radius: 999px; border: 1px solid #333; font-size: 0.9rem; transition: box-shadow 0.15s, border-color 0.15s; }
+    .badge.p0.speaking { border-color: #5da9ff; box-shadow: 0 0 12px #5da9ff88; }
+    .badge.p1.speaking { border-color: #63d68c; box-shadow: 0 0 12px #63d68c88; }
+    #status { text-align: center; color: #9aa4b2; margin-bottom: 0.75rem; min-height: 1.3rem; }
+    #transcript { border: 1px solid #262c36; border-radius: 10px; padding: 1rem; height: 260px; overflow-y: auto; background: #12151b; }
+    .line { margin: 0.3rem 0; }
+    .line .who { font-weight: 600; margin-right: 0.4rem; }
+    .line.p0 .who { color: #5da9ff; }
+    .line.p1 .who { color: #63d68c; }
+    .line.interim { opacity: 0.5; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>Counsel — two-person call</h1>
+
+  <div id="join">
+    <input id="name" placeholder="Your name" maxlength="32" autocomplete="off" />
+    <button id="joinBtn">Join call</button>
+  </div>
+
+  <div id="stage">
+    <div id="roster"></div>
+    <div id="avatar-wrap">
+      <canvas id="avatar" width="440" height="440"></canvas>
+      <div id="speaker"></div>
+    </div>
+    <div id="status"></div>
+    <div id="transcript"></div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let ws, stream, captureCtx, workletNode, playbackCtx, nextPlayTime = 0;
+    let myName = null, live = false, participants = [];
+    const levels = {};           // name -> current level (decays)
+    const interimEls = {};       // name -> element for in-progress line
+
+    /* ── join flow ─────────────────────────────────────────────── */
+    $("joinBtn").onclick = () => {
+      const name = $("name").value.trim();
+      if (!name) return;
+      myName = name;
+      ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/callws`);
+      ws.onopen = () => ws.send(JSON.stringify({ type: "join", name }));
+      ws.onmessage = onMessage;
+      ws.onclose = () => { $("status").textContent = "Disconnected."; stopAudio(); live = false; };
+      $("join").style.display = "none";
+      $("stage").style.display = "block";
+      $("status").textContent = "Joining…";
+    };
+
+    async function onMessage(e) {
+      const msg = JSON.parse(e.data);
+      switch (msg.type) {
+        case "error":
+          $("status").textContent = msg.message;
+          break;
+        case "room":
+          participants = msg.participants;
+          renderRoster();
+          if (msg.live && !live) {
+            live = true;
+            $("status").textContent = "Session live — transcript is being recorded.";
+            await startAudio();
+          } else if (!msg.live) {
+            if (live) { live = false; stopAudio(); }
+            $("status").textContent = participants.length < 2
+              ? "Waiting for the second participant…" : "";
+          }
+          break;
+        case "audio":
+          playRemote(msg.data);
+          bump(msg.from, null);
+          break;
+        case "level":
+          bump(msg.user, msg.level);
+          break;
+        case "transcript":
+          renderTranscript(msg.user, msg.text, msg.final);
+          break;
+        case "ended":
+          $("status").textContent = "Call ended." + (msg.file ? ` Transcript saved: transcripts/${msg.file}` : "");
+          break;
+      }
+    }
+
+    function renderRoster() {
+      $("roster").innerHTML = "";
+      participants.forEach((p, i) => {
+        const b = document.createElement("span");
+        b.className = `badge p${i}`;
+        b.dataset.name = p;
+        b.textContent = p + (p === myName ? " (you)" : "");
+        $("roster").appendChild(b);
+      });
+    }
+
+    /* ── transcript ────────────────────────────────────────────── */
+    function renderTranscript(user, text, final) {
+      const idx = Math.max(0, participants.indexOf(user));
+      let el = interimEls[user];
+      if (!el) {
+        el = document.createElement("div");
+        el.innerHTML = `<span class="who"></span><span class="txt"></span>`;
+        el.querySelector(".who").textContent = user + ":";
+        $("transcript").appendChild(el);
+        interimEls[user] = el;
+      }
+      el.className = `line p${idx}` + (final ? "" : " interim");
+      el.querySelector(".txt").textContent = text;
+      if (final) delete interimEls[user];
+      $("transcript").scrollTop = $("transcript").scrollHeight;
+    }
+
+    /* ── speaking levels drive badges + avatar ─────────────────── */
+    function bump(user, level) {
+      levels[user] = Math.max(levels[user] ?? 0, level ?? 0.05);
+      const badge = document.querySelector(`.badge[data-name="${CSS.escape(user)}"]`);
+      if (badge) badge.classList.toggle("speaking", levels[user] > 0.02);
+    }
+    setInterval(() => {
+      for (const k in levels) {
+        levels[k] *= 0.82;
+        if (levels[k] < 0.02) {
+          const badge = document.querySelector(`.badge[data-name="${CSS.escape(k)}"]`);
+          if (badge) badge.classList.remove("speaking");
+        }
+      }
+      const loudest = Object.entries(levels).sort((a, b) => b[1] - a[1])[0];
+      $("speaker").textContent = live && loudest && loudest[1] > 0.02 ? `${loudest[0]} is speaking` : "";
+    }, 100);
+
+    /* ── agent avatar: idle breathing when live, pulses with speech ── */
+    const ctx2d = $("avatar").getContext("2d");
+    function drawAvatar(t) {
+      const c = ctx2d, W = 440, H = 440, cx = W / 2, cy = H / 2;
+      c.clearRect(0, 0, W, H);
+      const loudest = Object.entries(levels).sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
+      const level = live ? Math.min(1, loudest[1] * 6) : 0;
+      const idx = loudest[0] ? participants.indexOf(loudest[0]) : -1;
+      const hue = !live ? 220 : level > 0.1 ? (idx === 1 ? 140 : 212) : 190;
+      const sat = live ? 80 : 12;
+      const breath = live ? Math.sin(t / 900) * 6 : Math.sin(t / 2200) * 2;
+      const base = 78 + breath + level * 46;
+
+      for (let ring = 3; ring >= 1; ring--) {
+        const wobble = Math.sin(t / 300 + ring * 1.7) * (live ? 4 + level * 10 : 1);
+        const r = base + ring * (14 + level * 12) + wobble;
+        c.beginPath();
+        c.arc(cx, cy, r, 0, Math.PI * 2);
+        c.fillStyle = `hsla(${hue}, ${sat}%, ${live ? 60 : 40}%, ${0.05 + (live ? 0.04 : 0.015) * ring})`;
+        c.fill();
+      }
+      const g = c.createRadialGradient(cx, cy, 6, cx, cy, base);
+      g.addColorStop(0, `hsla(${hue}, ${sat}%, ${live ? 78 : 52}%, 0.95)`);
+      g.addColorStop(1, `hsla(${hue}, ${sat}%, ${live ? 46 : 26}%, 0.9)`);
+      c.beginPath();
+      c.arc(cx, cy, base, 0, Math.PI * 2);
+      c.fillStyle = g;
+      c.fill();
+
+      // eyes: closed line when off, blinking dots when live
+      c.fillStyle = "rgba(10,14,20,0.85)";
+      const blink = live && Math.sin(t / 1700) > 0.97 ? 0.15 : 1;
+      const eyeH = (6 + level * 3) * blink;
+      for (const dx of [-22, 22]) {
+        c.beginPath();
+        c.ellipse(cx + dx, cy - 8, 6, live ? eyeH : 1.5, 0, 0, Math.PI * 2);
+        c.fill();
+      }
+      // mouth: opens with speech level
+      c.beginPath();
+      c.ellipse(cx, cy + 22, 14 + level * 6, live ? 3 + level * 16 : 1.5, 0, 0, Math.PI * 2);
+      c.fill();
+      requestAnimationFrame(drawAvatar);
+    }
+    requestAnimationFrame(drawAvatar);
+
+    /* ── audio: 16kHz PCM capture, relay playback ──────────────── */
+    function b64(buf) {
+      const bytes = new Uint8Array(buf);
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 0x8000)
+        bin += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 0x8000, bytes.length)));
+      return btoa(bin);
+    }
+
+    async function startAudio() {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      playbackCtx = new AudioContext({ sampleRate: 16000 });
+      if (playbackCtx.state === "suspended") await playbackCtx.resume();
+      captureCtx = new AudioContext({ sampleRate: 16000 });
+      const source = captureCtx.createMediaStreamSource(stream);
+      const code = `class P extends AudioWorkletProcessor{constructor(){super();this.b=[];this.n=0}process(inp){const c=inp[0]?.[0];if(!c)return true;const p=new Int16Array(c.length);for(let i=0;i<c.length;i++){const s=Math.max(-1,Math.min(1,c[i]));p[i]=s<0?s*0x8000:s*0x7FFF}this.b.push(p);this.n+=p.length;if(this.n>=1600){const o=new Int16Array(this.n);let f=0;for(const x of this.b){o.set(x,f);f+=x.length}this.b=[];this.n=0;this.port.postMessage(o.buffer,[o.buffer])}return true}}registerProcessor('pcm',P)`;
+      const url = URL.createObjectURL(new Blob([code], { type: "application/javascript" }));
+      await captureCtx.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      workletNode = new AudioWorkletNode(captureCtx, "pcm");
+      workletNode.port.onmessage = (e) => {
+        if (ws?.readyState === WebSocket.OPEN && live)
+          ws.send(JSON.stringify({ type: "audio", data: b64(e.data) }));
+      };
+      source.connect(workletNode);
+    }
+
+    function playRemote(base64) {
+      if (!playbackCtx) return;
+      const bin = atob(base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const pcm16 = new Int16Array(bytes.buffer);
+      const f32 = new Float32Array(pcm16.length);
+      for (let i = 0; i < pcm16.length; i++) f32[i] = pcm16[i] / 32768;
+      const buf = playbackCtx.createBuffer(1, f32.length, 16000);
+      buf.getChannelData(0).set(f32);
+      const src = playbackCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(playbackCtx.destination);
+      const now = playbackCtx.currentTime;
+      if (nextPlayTime < now) nextPlayTime = now;
+      src.start(nextPlayTime);
+      nextPlayTime += buf.duration;
+    }
+
+    function stopAudio() {
+      workletNode?.disconnect(); workletNode = null;
+      captureCtx?.close(); captureCtx = null;
+      stream?.getTracks().forEach((t) => t.stop()); stream = null;
+      playbackCtx?.close(); playbackCtx = null;
+      nextPlayTime = 0;
+    }
+  </script>
+</body>
+</html>

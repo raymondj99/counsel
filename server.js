@@ -1,5 +1,5 @@
 import http from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, appendFile, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
@@ -70,6 +70,12 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && req.url.startsWith("/call")) {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(await readFile(path.join(publicDir, "call.html")));
+      return;
+    }
+
     if (req.method === "GET" && req.url.startsWith("/voice")) {
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(await readFile(path.join(publicDir, "voice.html")));
@@ -108,7 +114,7 @@ const server = http.createServer(async (req, res) => {
 
 // Realtime voice: proxy each browser WebSocket to its own Inworld Realtime
 // session (cascaded STT -> LLM -> TTS-2 pipeline). The API key stays server-side.
-const wss = new WebSocketServer({ server, path: "/ws" });
+const wss = new WebSocketServer({ noServer: true });
 
 wss.on("connection", (browser, req) => {
   const user = new URL(req.url, "http://x").searchParams.get("user") ?? "guest";
@@ -130,8 +136,161 @@ wss.on("connection", (browser, req) => {
   upstream.on("error", (e) => console.error(`Realtime upstream error (${user}):`, e.message));
 });
 
+// ── Room protocol: two users join a call; when both are in, the session goes
+// live. Each participant's audio is relayed to the other and streamed to their
+// own Inworld STT connection, so speaker identity comes from the channel.
+// Final transcript lines are recorded to transcripts/.
+//
+// Client -> server: {type:"join", name} | {type:"audio", data:<b64 pcm16 @16kHz>}
+// Server -> client: {type:"room", participants, live} | {type:"audio", from, data}
+//                   {type:"level", user, level} | {type:"transcript", user, text, final}
+//                   {type:"ended", file} | {type:"error", message}
+
+const STT_URL = "wss://api.inworld.ai/stt/v1/transcribe:streamBidirectional";
+const STT_MODEL = process.env.INWORLD_STT_MODEL ?? "inworld/inworld-stt-1";
+const SAMPLE_RATE = 16000;
+const transcriptsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "transcripts");
+
+const room = { participants: new Map(), live: false, file: null };
+
+function broadcast(obj, except) {
+  const raw = JSON.stringify(obj);
+  for (const p of room.participants.values()) {
+    if (p.ws !== except && p.ws.readyState === WebSocket.OPEN) p.ws.send(raw);
+  }
+}
+
+function roomState() {
+  return { type: "room", participants: [...room.participants.keys()], live: room.live };
+}
+
+function openStt(participant) {
+  const stt = new WebSocket(STT_URL, { headers: { Authorization: `Basic ${API_KEY}` } });
+  stt.on("open", () => {
+    stt.send(JSON.stringify({
+      transcribeConfig: {
+        modelId: STT_MODEL,
+        audioEncoding: "LINEAR16",
+        sampleRateHertz: SAMPLE_RATE,
+        numberOfChannels: 1,
+        language: "en-US",
+      },
+    }));
+    for (const chunk of participant.pendingAudio.splice(0)) {
+      stt.send(JSON.stringify({ audioChunk: { content: chunk } }));
+    }
+  });
+  stt.on("message", async (raw) => {
+    let msg;
+    try { msg = JSON.parse(raw.toString()); } catch { return; }
+    const t = msg.result?.transcription;
+    if (!t?.transcript) return;
+    broadcast({ type: "transcript", user: participant.name, text: t.transcript, final: !!t.isFinal });
+    if (t.isFinal) {
+      participant.lastInterim = "";
+      if (room.file) {
+        const line = `[${new Date().toISOString()}] ${participant.name}: ${t.transcript}\n`;
+        await appendFile(room.file, line).catch((e) => console.error("transcript write:", e.message));
+      }
+    } else {
+      participant.lastInterim = t.transcript;
+    }
+  });
+  stt.on("error", (e) => console.error(`STT error (${participant.name}):`, e.message));
+  return stt;
+}
+
+async function goLive() {
+  room.live = true;
+  await mkdir(transcriptsDir, { recursive: true });
+  room.file = path.join(transcriptsDir, `call-${new Date().toISOString().replace(/[:.]/g, "-")}.log`);
+  const names = [...room.participants.keys()].join(", ");
+  await appendFile(room.file, `# Call started ${new Date().toISOString()} — participants: ${names}\n`);
+  for (const p of room.participants.values()) p.stt = openStt(p);
+  broadcast(roomState());
+  console.log(`Call live (${names}) -> ${room.file}`);
+}
+
+async function endCall() {
+  if (!room.live) return;
+  room.live = false;
+  const file = room.file;
+  const parts = [...room.participants.values()];
+  // Ask STT to finalize any in-flight speech, give finals a moment to land.
+  for (const p of parts) {
+    try { p.stt?.send(JSON.stringify({ endTurn: {} })); } catch {}
+  }
+  await new Promise((r) => setTimeout(r, 2000));
+  for (const p of parts) {
+    if (p.lastInterim && file) {
+      await appendFile(file, `[${new Date().toISOString()}] ${p.name} (partial): ${p.lastInterim}\n`).catch(() => {});
+      p.lastInterim = "";
+    }
+    try { p.stt?.send(JSON.stringify({ closeStream: {} })); } catch {}
+    p.stt?.close();
+    p.stt = null;
+  }
+  if (file) await appendFile(file, `# Call ended ${new Date().toISOString()}\n`).catch(() => {});
+  broadcast({ type: "ended", file: file && path.basename(file) });
+  room.file = null;
+}
+
+function pcmLevel(b64) {
+  const buf = Buffer.from(b64, "base64");
+  let sum = 0;
+  const n = Math.floor(buf.length / 2);
+  for (let i = 0; i < n; i++) { const s = buf.readInt16LE(i * 2) / 32768; sum += s * s; }
+  return n ? Math.sqrt(sum / n) : 0;
+}
+
+const callWss = new WebSocketServer({ noServer: true });
+
+server.on("upgrade", (req, socket, head) => {
+  const { pathname } = new URL(req.url, "http://x");
+  const target = pathname === "/ws" ? wss : pathname === "/callws" ? callWss : null;
+  if (!target) return socket.destroy();
+  target.handleUpgrade(req, socket, head, (ws) => target.emit("connection", ws, req));
+});
+
+callWss.on("connection", (ws) => {
+  let me = null;
+
+  ws.on("message", (raw) => {
+    let msg;
+    try { msg = JSON.parse(raw.toString()); } catch { return; }
+
+    if (msg.type === "join" && !me) {
+      const name = String(msg.name ?? "").trim().slice(0, 32);
+      if (!name) return ws.send(JSON.stringify({ type: "error", message: "Name required." }));
+      if (room.participants.size >= 2) return ws.send(JSON.stringify({ type: "error", message: "Room is full." }));
+      if (room.participants.has(name)) return ws.send(JSON.stringify({ type: "error", message: "Name already taken." }));
+      me = { name, ws, stt: null, pendingAudio: [], lastInterim: "" };
+      room.participants.set(name, me);
+      broadcast(roomState());
+      if (room.participants.size === 2) goLive().catch((e) => console.error("goLive:", e.message));
+      return;
+    }
+
+    if (msg.type === "audio" && me && room.live && msg.data) {
+      broadcast({ type: "audio", from: me.name, data: msg.data }, ws);
+      broadcast({ type: "level", user: me.name, level: +pcmLevel(msg.data).toFixed(3) });
+      if (me.stt?.readyState === WebSocket.OPEN) {
+        me.stt.send(JSON.stringify({ audioChunk: { content: msg.data } }));
+      } else if (me.pendingAudio.length < 50) {
+        me.pendingAudio.push(msg.data);
+      }
+    }
+  });
+
+  ws.on("close", async () => {
+    if (!me) return;
+    room.participants.delete(me.name);
+    await endCall().catch((e) => console.error("endCall:", e.message));
+    broadcast(roomState());
+  });
+});
+
 server.listen(PORT, () => {
   console.log(`Agent "Nova" ready on http://localhost:${PORT} (model: ${MODEL})`);
-  console.log(`Text chat: http://localhost:${PORT}  Voice chat: http://localhost:${PORT}/voice`);
-  console.log(`Open two tabs and pick a different user in each.`);
+  console.log(`Text: /  Voice: /voice  Call room: /call`);
 });
