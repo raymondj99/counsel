@@ -23,37 +23,44 @@ export default function Home() {
   mutedRef.current = muted;
   liveRef.current = live;
 
-  /* The orb inherits the painting's most saturated color (deep blue, pink…):
-     bucket pixels by hue, keep only vivid ones, pick the richest bucket. */
+  /* The orb inherits the painting's most VIBRANT color. Downsampling blends
+     brushstrokes and washes them gray, so sample at high resolution, keep the
+     top 1% most saturated pixels, and pick the dominant hue among those. */
   useEffect(() => {
     const img = new Image();
     img.src = "/monet.jpg";
     img.onload = () => {
+      const SIZE = 400;
       const c = document.createElement("canvas");
-      c.width = c.height = 80;
+      c.width = c.height = SIZE;
       const ctx = c.getContext("2d");
-      ctx.drawImage(img, 0, 0, 80, 80);
-      const d = ctx.getImageData(0, 0, 80, 80).data;
+      ctx.drawImage(img, 0, 0, SIZE, SIZE);
+      const d = ctx.getImageData(0, 0, SIZE, SIZE).data;
 
-      const buckets = new Map(); // hue band -> {score, h, s, l, n}
+      const px = [];
       for (let i = 0; i < d.length; i += 4) {
         const [h, s, l] = rgbToHsl(d[i], d[i + 1], d[i + 2]);
-        if (s < 0.25 || l < 0.12 || l > 0.85) continue; // skip muddy/washed pixels
-        const key = Math.round(h / 20) * 20;
-        const b = buckets.get(key) ?? { score: 0, h: 0, s: 0, l: 0, n: 0 };
-        const w = s * s; // favor vividness
-        b.score += w; b.h += h * w; b.s += s * w; b.l += l * w; b.n += w;
+        if (l > 0.08 && l < 0.92) px.push([h, s, l]);
+      }
+      px.sort((a, b) => b[1] - a[1]);
+      const vivid = px.slice(0, Math.max(40, (px.length / 100) | 0)); // top 1%
+
+      const buckets = new Map();
+      for (const [h, s, l] of vivid) {
+        const key = (Math.round(h / 30) * 30) % 360;
+        const b = buckets.get(key) ?? { h: 0, s: 0, l: 0, n: 0 };
+        b.h += h; b.s += s; b.l += l; b.n++;
         buckets.set(key, b);
       }
-      const best = [...buckets.values()].sort((a, b) => b.score - a.score)[0];
+      const best = [...buckets.values()].sort((a, b) => b.n - a.n)[0];
       if (!best) return;
       const h = best.h / best.n;
-      const s = Math.min(0.75, best.s / best.n + 0.15); // push saturation up
-      const l = best.l / best.n;
+      const s = Math.min(0.85, (best.s / best.n) * 1.35); // amplify vibrance
+      const l = Math.min(0.55, Math.max(0.34, best.l / best.n)); // keep it rich, not murky
       const root = document.documentElement.style;
-      root.setProperty("--orb-a", `hsl(${h}, ${s * 100}%, ${Math.min(82, l * 100 + 26)}%)`);
+      root.setProperty("--orb-a", `hsl(${h}, ${s * 100}%, ${Math.min(80, l * 100 + 24)}%)`);
       root.setProperty("--orb-b", `hsl(${h}, ${s * 100}%, ${l * 100}%)`);
-      root.setProperty("--orb-c", `hsl(${h}, ${s * 100}%, ${Math.max(16, l * 100 - 18)}%)`);
+      root.setProperty("--orb-c", `hsl(${h}, ${s * 100}%, ${Math.max(18, l * 100 - 16)}%)`);
     };
   }, []);
 

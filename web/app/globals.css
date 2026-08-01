@@ -77,7 +77,7 @@ html, body {
   transition: filter 0.5s;
   will-change: transform;
 }
-.orb.off { filter: saturate(0.3) brightness(1.03); }
+.orb.off { filter: saturate(0.85) brightness(1.02); }
 
 .caption {
   min-height: 2.6rem;
