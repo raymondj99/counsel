@@ -23,6 +23,20 @@ export default function Home() {
   mutedRef.current = muted;
   liveRef.current = live;
 
+  /* Orb wears one of three saturated coats: light green, lily pink, sky blue. */
+  useEffect(() => {
+    const palettes = [
+      { a: "#aeeebc", b: "#67d987", c: "#38a75f" }, // saturated light green
+      { a: "#f2c3d0", b: "#e18fa9", c: "#b25e7d" }, // lily pink
+      { a: "#aadcf9", b: "#58baf0", c: "#2a89c7" }, // saturated sky blue
+    ];
+    const p = palettes[Math.floor(Math.random() * palettes.length)];
+    const root = document.documentElement.style;
+    root.setProperty("--orb-a", p.a);
+    root.setProperty("--orb-b", p.b);
+    root.setProperty("--orb-c", p.c);
+  }, []);
+
   /* Orb animation: gentle breathing, swells with whoever is speaking. */
   useEffect(() => {
     let raf;
@@ -91,11 +105,16 @@ export default function Home() {
   return (
     <>
       <div className="backdrop" />
+      <div className="brand">Counsel</div>
       <main className="screen">
         <div className="card">
         <header className="header">
-          <div className="title">{joined && live ? `${name} ${mmss}` : "Counsel"}</div>
-          <div className="subtitle">{status || "a quiet place to talk"}</div>
+          {joined && live ? (
+            <div className="title">{name} {mmss}</div>
+          ) : (
+            <div className="welcome">Welcome, {name.trim() || "John"}. Find a quiet place to talk.</div>
+          )}
+          {status && <div className="subtitle">{status}</div>}
         </header>
 
         <div className="orbWrap">

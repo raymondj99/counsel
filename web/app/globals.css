@@ -43,7 +43,30 @@ html, body {
   padding: 2.5rem 2rem 2rem;
 }
 
+.brand {
+  position: fixed;
+  top: 1.4rem;
+  left: 1.8rem;
+  z-index: 2;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: #fdfdfa;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 14px rgba(20, 30, 40, 0.45);
+}
+
 .header { text-align: center; }
+
+.welcome {
+  font-size: 1.12rem;
+  font-style: italic;
+  color: var(--ink);
+  animation: calm-pulse 4.5s ease-in-out infinite;
+}
+@keyframes calm-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
 .title {
   font-size: 1.5rem;
   font-weight: 550;
