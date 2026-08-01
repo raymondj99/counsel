@@ -2,6 +2,7 @@ import http from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { WebSocketServer, WebSocket } from "ws";
 
 const PORT = process.env.PORT ?? 3000;
 const API_KEY = process.env.INWORLD_API_KEY;
@@ -69,6 +70,12 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && req.url.startsWith("/voice")) {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(await readFile(path.join(publicDir, "voice.html")));
+      return;
+    }
+
     if (req.method === "GET" && req.url.startsWith("/history")) {
       const userId = new URL(req.url, "http://x").searchParams.get("user");
       const history = getHistory(userId).filter((m) => m.role !== "system");
@@ -99,7 +106,32 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// Realtime voice: proxy each browser WebSocket to its own Inworld Realtime
+// session (cascaded STT -> LLM -> TTS-2 pipeline). The API key stays server-side.
+const wss = new WebSocketServer({ server, path: "/ws" });
+
+wss.on("connection", (browser, req) => {
+  const user = new URL(req.url, "http://x").searchParams.get("user") ?? "guest";
+  const upstream = new WebSocket(
+    `wss://api.inworld.ai/api/v1/realtime/session?key=${user}-${Date.now()}&protocol=realtime`,
+    { headers: { Authorization: `Basic ${API_KEY}` } },
+  );
+
+  upstream.on("message", (raw) => {
+    if (browser.readyState === WebSocket.OPEN) browser.send(raw.toString());
+  });
+  browser.on("message", (msg) => {
+    if (upstream.readyState === WebSocket.OPEN) upstream.send(msg.toString());
+  });
+  browser.on("close", () => upstream.close());
+  upstream.on("close", () => {
+    if (browser.readyState === WebSocket.OPEN) browser.close();
+  });
+  upstream.on("error", (e) => console.error(`Realtime upstream error (${user}):`, e.message));
+});
+
 server.listen(PORT, () => {
   console.log(`Agent "Nova" ready on http://localhost:${PORT} (model: ${MODEL})`);
+  console.log(`Text chat: http://localhost:${PORT}  Voice chat: http://localhost:${PORT}/voice`);
   console.log(`Open two tabs and pick a different user in each.`);
 });

@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Talk to Nova</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    a { color: inherit; }
+    #controls { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; }
+    button, select { font-size: 1rem; padding: 0.5rem 1rem; cursor: pointer; }
+    #start.active { border: 2px solid #c33; color: #c33; }
+    #transcript { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; height: 380px; overflow-y: auto; }
+    .turn { margin: 0.4rem 0; padding: 0.5rem 0.75rem; border-radius: 8px; max-width: 85%; white-space: pre-wrap; }
+    .user { background: #d0e7ff; margin-left: auto; }
+    .agent { background: #eee; }
+    #status { color: #666; font-size: 0.9rem; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Talk to Nova <small style="font-size:1rem;font-weight:normal">(<a href="/">text chat</a>)</small></h1>
+
+  <div id="controls">
+    <select id="user">
+      <option value="alice">Alice</option>
+      <option value="bob">Bob</option>
+    </select>
+    <select id="voice">
+      <option>Clive</option>
+      <option>Sarah</option>
+    </select>
+    <select id="mood">
+      <option value="natural">Natural</option>
+      <option value="calm">Calm & soothing</option>
+      <option value="excited">Excited & energetic</option>
+      <option value="dramatic">Dramatic storyteller</option>
+      <option value="whisper">Whispering</option>
+    </select>
+    <button id="start">Start talking</button>
+  </div>
+
+  <div id="transcript"></div>
+  <div id="status">Pick who you are, a voice, and a mood — then start talking. Change the mood mid-conversation to re-steer the agent live.</div>
+
+  <script>
+    const startBtn = document.getElementById("start");
+    const transcriptEl = document.getElementById("transcript");
+    const statusEl = document.getElementById("status");
+
+    const MOODS = {
+      natural: "Match the user's energy naturally.",
+      calm: "Stay calm and soothing. Prefer tags like [Speak softly] and gentle pacing.",
+      excited: "Be upbeat and energetic. Use tags like [excited] and [laughing] where natural.",
+      dramatic: "Narrate like a dramatic storyteller. Use expressive free-form tags such as [spoken with dramatic flair] and well-placed [sigh] pauses.",
+      whisper: "Whisper everything. Begin replies with [whispering].",
+    };
+
+    function instructions() {
+      const user = document.getElementById("user").value;
+      return (
+        `You are Nova, a friendly voice assistant. You are speaking with ${user}. ` +
+        "Your replies are rendered by Inworld TTS-2, which understands inline steering tags: " +
+        "emotions like [happy], [sad], [excited], [whispering], [laughing], non-verbals like [sigh] and [breathe], " +
+        "and free-form directions like [Speak softly] or [spoken with dramatic flair]. " +
+        "Use these tags naturally to make your speech expressive, and adapt your tone to the user's emotional state. " +
+        `Current style direction: ${MOODS[document.getElementById("mood").value]} ` +
+        "Keep replies to one or two short sentences."
+      );
+    }
+
+    let ws, stream, captureCtx, workletNode, playbackCtx;
+    let active = false, interrupted = false, nextPlayTime = 0, activeSources = [], currentTurn = null;
+
+    function addTurn(role) {
+      const div = document.createElement("div");
+      div.className = "turn " + role;
+      transcriptEl.appendChild(div);
+      currentTurn = { role, el: div, text: "" };
+      transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    }
+    function appendToTurn(role, delta) {
+      if (!currentTurn || currentTurn.role !== role) addTurn(role);
+      currentTurn.text += delta;
+      currentTurn.el.textContent = currentTurn.text;
+      transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    }
+    function setTurnText(role, text) {
+      if (!currentTurn || currentTurn.role !== role) addTurn(role);
+      currentTurn.text = text;
+      currentTurn.el.textContent = text;
+    }
+
+    function send(obj) {
+      if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+    }
+
+    function sessionConfig() {
+      return {
+        type: "session.update",
+        session: {
+          type: "realtime",
+          model: "openai/gpt-4o-mini",
+          instructions: instructions(),
+          output_modalities: ["audio", "text"],
+          audio: {
+            input: { turn_detection: { type: "semantic_vad", eagerness: "high", create_response: true, interrupt_response: true } },
+            output: { model: "inworld-tts-2", voice: document.getElementById("voice").value },
+          },
+        },
+      };
+    }
+
+    // Re-steer the live session when mood or voice changes.
+    document.getElementById("mood").onchange = () => { if (active) send(sessionConfig()); };
+    document.getElementById("voice").onchange = () => { if (active) send(sessionConfig()); };
+
+    function b64(buf) {
+      const bytes = new Uint8Array(buf);
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 0x8000)
+        bin += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 0x8000, bytes.length)));
+      return btoa(bin);
+    }
+    function queueAudio(base64) {
+      if (!playbackCtx || interrupted) return;
+      const bin = atob(base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const pcm16 = new Int16Array(bytes.buffer);
+      const f32 = new Float32Array(pcm16.length);
+      for (let i = 0; i < pcm16.length; i++) f32[i] = pcm16[i] / 32768;
+      const buf = playbackCtx.createBuffer(1, f32.length, 24000);
+      buf.getChannelData(0).set(f32);
+      const src = playbackCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(playbackCtx.destination);
+      const now = playbackCtx.currentTime;
+      if (nextPlayTime < now) nextPlayTime = now;
+      src.start(nextPlayTime);
+      nextPlayTime += buf.duration;
+      activeSources.push(src);
+      src.onended = () => activeSources.splice(activeSources.indexOf(src), 1);
+    }
+    function flushAudio() {
+      activeSources.forEach((s) => { try { s.stop(); } catch {} });
+      activeSources = [];
+      nextPlayTime = 0;
+    }
+
+    async function startCapture() {
+      captureCtx = new AudioContext({ sampleRate: 24000 });
+      const source = captureCtx.createMediaStreamSource(stream);
+      const code = `class P extends AudioWorkletProcessor{constructor(){super();this.b=[];this.n=0}process(inp){const c=inp[0]?.[0];if(!c)return true;const p=new Int16Array(c.length);for(let i=0;i<c.length;i++){const s=Math.max(-1,Math.min(1,c[i]));p[i]=s<0?s*0x8000:s*0x7FFF}this.b.push(p);this.n+=p.length;if(this.n>=2400){const o=new Int16Array(this.n);let f=0;for(const x of this.b){o.set(x,f);f+=x.length}this.b=[];this.n=0;this.port.postMessage(o.buffer,[o.buffer])}return true}}registerProcessor('pcm',P)`;
+      const url = URL.createObjectURL(new Blob([code], { type: "application/javascript" }));
+      await captureCtx.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      workletNode = new AudioWorkletNode(captureCtx, "pcm");
+      workletNode.port.onmessage = (e) => send({ type: "input_audio_buffer.append", audio: b64(e.data) });
+      source.connect(workletNode);
+      workletNode.connect(captureCtx.destination);
+    }
+
+    async function start() {
+      startBtn.disabled = true;
+      statusEl.textContent = "Connecting…";
+      transcriptEl.innerHTML = "";
+      currentTurn = null;
+      interrupted = false;
+
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      playbackCtx = new AudioContext({ sampleRate: 24000 });
+      if (playbackCtx.state === "suspended") await playbackCtx.resume();
+
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      ws = new WebSocket(`${proto}://${location.host}/ws?user=${document.getElementById("user").value}`);
+
+      ws.onmessage = async (e) => {
+        const msg = JSON.parse(e.data);
+        switch (msg.type) {
+          case "session.created":
+            send(sessionConfig());
+            break;
+          case "session.updated":
+            if (!active) {
+              active = true;
+              startBtn.textContent = "Stop";
+              startBtn.classList.add("active");
+              startBtn.disabled = false;
+              statusEl.textContent = "Live — just talk. Mood/voice changes apply immediately.";
+              await startCapture();
+              send({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text: "Greet me by name in one short sentence." }] } });
+              send({ type: "response.create" });
+            }
+            break;
+          case "response.audio.delta":
+          case "response.output_audio.delta":
+            if (msg.delta) queueAudio(msg.delta);
+            break;
+          case "response.output_text.delta":
+          case "response.text.delta":
+          case "response.audio_transcript.delta":
+          case "response.output_audio_transcript.delta":
+            if (msg.delta) appendToTurn("agent", msg.delta);
+            break;
+          case "response.output_audio_transcript.done":
+            setTurnText("agent", msg.transcript || "");
+            break;
+          case "conversation.item.input_audio_transcription.delta":
+          case "input_audio_transcription.delta":
+            if (msg.delta) appendToTurn("user", msg.delta);
+            break;
+          case "conversation.item.input_audio_transcription.completed":
+            if (msg.transcript) setTurnText("user", msg.transcript);
+            break;
+          case "input_audio_buffer.speech_started":
+            interrupted = true;
+            flushAudio();
+            send({ type: "response.cancel" });
+            if (currentTurn?.role === "agent") currentTurn = null;
+            break;
+          case "response.output_item.added":
+            interrupted = false;
+            break;
+          case "response.done":
+            currentTurn = null;
+            break;
+          case "error":
+            statusEl.textContent = "Error: " + (msg.error?.message ?? JSON.stringify(msg));
+            break;
+        }
+      };
+      ws.onclose = () => { if (active) stop(); };
+    }
+
+    function stop() {
+      workletNode?.disconnect(); workletNode = null;
+      captureCtx?.close(); captureCtx = null;
+      stream?.getTracks().forEach((t) => t.stop()); stream = null;
+      flushAudio();
+      playbackCtx?.close(); playbackCtx = null;
+      ws?.close(); ws = null;
+      active = false; interrupted = false; currentTurn = null;
+      startBtn.textContent = "Start talking";
+      startBtn.classList.remove("active");
+      startBtn.disabled = false;
+      statusEl.textContent = "Stopped.";
+    }
+
+    startBtn.onclick = () => (active ? stop() : start().catch((e) => { statusEl.textContent = e.message; stop(); }));
+  </script>
+</body>
+</html>
