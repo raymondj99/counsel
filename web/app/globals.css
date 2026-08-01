@@ -61,11 +61,6 @@ html, body {
   font-size: 1.12rem;
   font-style: italic;
   color: var(--ink);
-  animation: calm-pulse 4.5s ease-in-out infinite;
-}
-@keyframes calm-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
 }
 .title {
   font-size: 1.5rem;

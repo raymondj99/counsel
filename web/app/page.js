@@ -44,7 +44,8 @@ export default function Home() {
     const tick = (t) => {
       levelRef.current *= 0.9;
       smooth += (Math.min(1, levelRef.current * 7) - smooth) * 0.18;
-      const breath = liveRef.current ? Math.sin(t / 1100) * 0.015 : Math.sin(t / 2600) * 0.006;
+      // Meditative pulse: ~5s cycle, deeper when idle, subtler mid-call.
+      const breath = Math.sin(t / 800) * (liveRef.current ? 0.03 : 0.055);
       if (orbRef.current) {
         orbRef.current.style.transform = `scale(${1 + breath + smooth * 0.16})`;
       }
