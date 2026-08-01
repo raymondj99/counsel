@@ -23,25 +23,37 @@ export default function Home() {
   mutedRef.current = muted;
   liveRef.current = live;
 
-  /* The orb inherits its palette from the painting: sample three zones. */
+  /* The orb inherits the painting's most saturated color (deep blue, pink…):
+     bucket pixels by hue, keep only vivid ones, pick the richest bucket. */
   useEffect(() => {
     const img = new Image();
     img.src = "/monet.jpg";
     img.onload = () => {
       const c = document.createElement("canvas");
-      c.width = c.height = 60;
+      c.width = c.height = 80;
       const ctx = c.getContext("2d");
-      ctx.drawImage(img, 0, 0, 60, 60);
-      const avg = (x, y, w, h) => {
-        const d = ctx.getImageData(x, y, w, h).data;
-        let r = 0, g = 0, b = 0, n = 0;
-        for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
-        return `rgb(${(r / n) | 0}, ${(g / n) | 0}, ${(b / n) | 0})`;
-      };
+      ctx.drawImage(img, 0, 0, 80, 80);
+      const d = ctx.getImageData(0, 0, 80, 80).data;
+
+      const buckets = new Map(); // hue band -> {score, h, s, l, n}
+      for (let i = 0; i < d.length; i += 4) {
+        const [h, s, l] = rgbToHsl(d[i], d[i + 1], d[i + 2]);
+        if (s < 0.25 || l < 0.12 || l > 0.85) continue; // skip muddy/washed pixels
+        const key = Math.round(h / 20) * 20;
+        const b = buckets.get(key) ?? { score: 0, h: 0, s: 0, l: 0, n: 0 };
+        const w = s * s; // favor vividness
+        b.score += w; b.h += h * w; b.s += s * w; b.l += l * w; b.n += w;
+        buckets.set(key, b);
+      }
+      const best = [...buckets.values()].sort((a, b) => b.score - a.score)[0];
+      if (!best) return;
+      const h = best.h / best.n;
+      const s = Math.min(0.75, best.s / best.n + 0.15); // push saturation up
+      const l = best.l / best.n;
       const root = document.documentElement.style;
-      root.setProperty("--orb-a", avg(6, 6, 22, 22));    // upper light zone
-      root.setProperty("--orb-b", avg(20, 24, 24, 24));  // center
-      root.setProperty("--orb-c", avg(30, 40, 24, 16));  // lower shade
+      root.setProperty("--orb-a", `hsl(${h}, ${s * 100}%, ${Math.min(82, l * 100 + 26)}%)`);
+      root.setProperty("--orb-b", `hsl(${h}, ${s * 100}%, ${l * 100}%)`);
+      root.setProperty("--orb-c", `hsl(${h}, ${s * 100}%, ${Math.max(16, l * 100 - 18)}%)`);
     };
   }, []);
 
@@ -158,6 +170,20 @@ export default function Home() {
       </main>
     </>
   );
+}
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const dlt = max - min;
+  const s = l > 0.5 ? dlt / (2 - max - min) : dlt / (max + min);
+  let h;
+  if (max === r) h = ((g - b) / dlt + (g < b ? 6 : 0)) * 60;
+  else if (max === g) h = ((b - r) / dlt + 2) * 60;
+  else h = ((r - g) / dlt + 4) * 60;
+  return [h, s, l];
 }
 
 /* ── audio: 16kHz PCM capture + scheduled playback (room protocol) ── */
