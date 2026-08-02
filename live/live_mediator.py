@@ -16,7 +16,14 @@ TREE_GUIDED_SYSTEM = (
     + "\n\nYou are facilitating a LIVE voice call. A pre-computed mediation tree "
     "has ranked intervention options by predicted success probability. Adapt the "
     "selected template to what participants actually said — do not read it verbatim "
-    "if the conversation has moved. Keep replies to one or two short sentences."
+    "if the conversation has moved. Keep replies to one or two short sentences. "
+    "Stay with the conversation until a resolution is found — do not wrap up early. "
+    "Reflect and clarify most turns; when they are stuck, occasionally offer a "
+    "concrete suggestion they could try — not every turn. "
+    "Never recap or paraphrase what was just said; one new move per turn. "
+    "Reply CLOSE: when both have clearly accepted a shared plan or agreement. "
+    "If the exchange is heated, treat [emotion: …] tags as information only — "
+    "de-escalate and stay in the session; never pause or end the call."
 )
 
 
@@ -52,8 +59,10 @@ class LiveMediator:
             )
         return cls(navigator, inworld, dry_run=dry_run)
 
-    def consider(self, transcript: list[str]) -> dict:
+    def consider(self, transcript: list[str], participants: list[str] | None = None) -> dict:
         """Return PASS or a tree-guided line adapted for the live transcript."""
+        if participants:
+            self.navigator.set_live_participants(participants)
         self.navigator.sync_transcript(transcript)
 
         pending = self.navigator.pending_intervention()
@@ -136,6 +145,13 @@ class LiveMediator:
             f"Optional tool: {pending.get('tool') or 'none'}\n"
             f"Optional scenario: {pending.get('scenario') or 'none'}\n\n"
             "Adapt the selected intervention for this live moment. "
+            "Do not recap what participants just said — they heard it. "
+            "Do not only ask them to resolve — when they are stuck, "
+            "occasionally offer a concrete suggestion drawn from what they said. "
+            "Stay with the conversation until they reach a resolution — do not wrap up early. "
+            "If the exchange is heated, treat [emotion: …] tags as information only — "
+            "de-escalate with a brief line and stay in the session; never pause or end the call. "
+            "When both have clearly accepted a shared plan, reply with exactly CLOSE: and a warm closing. "
             "If speaking now would add nothing, reply with exactly PASS. "
             "Otherwise reply with only the words you would say aloud."
         )

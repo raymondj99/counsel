@@ -56,7 +56,15 @@ class MediatorHandler(BaseHTTPRequestHandler):
             self._write_json({"error": "transcript must be a list of strings"}, status=400)
             return
 
-        result = _mediator.consider([str(line) for line in transcript])
+        participants = body.get("participants")
+        if participants is not None and not isinstance(participants, list):
+            self._write_json({"error": "participants must be a list of names"}, status=400)
+            return
+
+        result = _mediator.consider(
+            [str(line) for line in transcript],
+            [str(name) for name in participants] if participants else None,
+        )
         self._write_json(result)
 
     def _read_json(self) -> dict:

@@ -23,15 +23,45 @@ export const INWORLD_URL = "https://api.inworld.ai/v1/chat/completions";
 // editing the base prompt (e.g. state.context.topic = "rent split").
 export function createState() {
   return {
-    turns: [],           // [{ speaker, text }] in order
+    turns: [],           // [{ speaker, text, emotion? }] in order
     speakerCounts: {},   // speaker -> number of final lines
     context: {},         // your dynamic key/value context, injected into the prompt
   };
 }
 
-export function addTurn(state, speaker, text) {
-  state.turns.push({ speaker, text });
+// Top Inworld STT voice-profile label for a category (emotion, vocalStyle, …).
+export function topVoiceLabel(voiceProfile, category) {
+  const top = voiceProfile?.[category]?.[0];
+  return top?.label ?? null;
+}
+
+export function addTurn(state, speaker, text, meta = {}) {
+  const turn = { speaker, text };
+  if (meta.emotion) turn.emotion = meta.emotion;
+  state.turns.push(turn);
   state.speakerCounts[speaker] = (state.speakerCounts[speaker] ?? 0) + 1;
+  return state;
+}
+
+export function formatTurnLine({ speaker, text, emotion }) {
+  const prefix = emotion ? `[emotion: ${emotion}] ` : "";
+  return `${speaker}: ${prefix}${text}`;
+}
+
+export function addTurnWithVoice(state, speaker, text, voiceProfile) {
+  const emotion = topVoiceLabel(voiceProfile, "emotion");
+  addTurn(state, speaker, text, { emotion });
+  updateEmotionContext(state, emotion);
+  return state;
+}
+
+// Labels from Inworld STT emotion profiling that signal a heated moment.
+const HEATED_EMOTION = /^(heated|angry|frustrated|upset|contempt|aggressive|hostile)/i;
+
+export function updateEmotionContext(state, emotion) {
+  if (!emotion || !HEATED_EMOTION.test(emotion)) return state;
+  state.context.heated =
+    `Voice tone recently detected as "${emotion}" — information only; slow the pace and de-escalate, but do not end the session.`;
   return state;
 }
 
@@ -51,7 +81,7 @@ export function buildContext(state) {
 }
 
 export function transcriptText(state, limit = 30) {
-  return state.turns.slice(-limit).map((t) => `${t.speaker}: ${t.text}`).join("\n");
+  return state.turns.slice(-limit).map(formatTurnLine).join("\n");
 }
 
 // ── Prompt assembly ─────────────────────────────────────────────────────────
@@ -70,7 +100,11 @@ export function buildMessages(systemPrompt, state, limit = 30) {
   const recent = transcriptText(state, limit);
   const userContent =
     (context ? `Context:\n${context}\n\n` : "") +
-    `Recent transcript:\n${recent}\n\nRespond with PASS or your interjection.`;
+    `Recent transcript ([emotion: …] tags are voice-detected from STT — informational only, never a reason to end the session):\n${recent}\n\n` +
+    "Respond with exactly one of:\n" +
+    "- PASS — stay silent this turn\n" +
+    "- CLOSE: <words> — a resolution or concrete agreement is reached; say your closing line and end the session\n" +
+    "- Otherwise, only the words you would say aloud (your interjection). If the exchange is heated, de-escalate and stay in the session — do not try to pause or end it.";
   return [
     { role: "system", content: systemPrompt },
     { role: "user", content: userContent },
@@ -89,11 +123,27 @@ export async function callLLM({ messages, apiKey, model, url = INWORLD_URL }) {
   return data.choices[0].message.content;
 }
 
-// Interpret a reply: exactly "PASS" -> stay silent, otherwise speak the text.
+// Interpret a reply: PASS -> silent; CLOSE: -> speak and end session; else interject.
 export function parseDecision(reply) {
   const text = (reply ?? "").trim();
-  if (!text || /^PASS\b/i.test(text)) return { speak: false, text: "" };
-  return { speak: true, text };
+  if (!text || /^PASS\b/i.test(text)) {
+    return { speak: false, text: "", endSession: false };
+  }
+  const closeMatch = text.match(/^CLOSE:\s*(.*)$/is);
+  if (closeMatch) {
+    return {
+      speak: true,
+      text: closeMatch[1].trim(),
+      endSession: true,
+      endReason: "resolution",
+    };
+  }
+  // Legacy STOP: prefix — de-escalate but never end the session.
+  const stopMatch = text.match(/^STOP:\s*(.*)$/is);
+  if (stopMatch) {
+    return { speak: true, text: stopMatch[1].trim(), endSession: false };
+  }
+  return { speak: true, text, endSession: false };
 }
 
 // Convenience: state + prompt -> decision, in one call. Used by both callers.

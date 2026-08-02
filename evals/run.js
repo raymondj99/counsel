@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import {
   createState,
   addTurn,
+  updateEmotionContext,
   buildMessages,
   callLLM,
   parseDecision,
@@ -39,7 +40,10 @@ const promptFiles = promptArgs.length ? promptArgs : [DEFAULT_PROMPT_FILE];
 function stateFromFixture(fixture) {
   const state = createState();
   Object.assign(state.context, fixture.context ?? {});
-  for (const turn of fixture.turns ?? []) addTurn(state, turn.speaker, turn.text);
+  for (const turn of fixture.turns ?? []) {
+    addTurn(state, turn.speaker, turn.text, { emotion: turn.emotion ?? null });
+    updateEmotionContext(state, turn.emotion);
+  }
   return state;
 }
 

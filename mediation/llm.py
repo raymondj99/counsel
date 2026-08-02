@@ -256,7 +256,7 @@ class MockLLMClient:
         seed = int(digest[:6], 16)
         name = speaker.lower()
 
-        if name in {"maya", "alex"}:
+        if name in {"john", "maya", "alex"}:
             pools = [
                 [
                     "When I saw the charge without a heads-up, it felt like I was the only one holding the financial line. I need us to agree on what counts as a big purchase before the next one.",
@@ -271,7 +271,7 @@ class MockLLMClient:
                     "If I sound like your mom, tell me. I want a rule we both accept, not me policing you.",
                 ],
             ]
-        elif name in {"dev", "jordan"}:
+        elif name in {"mary", "dev", "jordan"}:
             pools = [
                 [
                     "I bought it after sitting on the decision for two years — I didn't think it was a secret purchase. I get that the timing looked bad.",

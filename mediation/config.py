@@ -45,7 +45,7 @@ def load_settings(*, env_file: Path | None = None) -> Settings:
         openai_max_tokens=int(os.getenv("OPENAI_MAX_TOKENS", "512")),
         openai_temperature=float(os.getenv("OPENAI_TEMPERATURE", "0.7")),
         inworld_api_key=os.getenv("INWORLD_API_KEY"),
-        inworld_model=os.getenv("INWORLD_MODEL", "zhipu/glm-5.2"),
+        inworld_model=os.getenv("INWORLD_MODEL", "openai/gpt-4o-mini"),
         port=int(os.getenv("PORT", "3000")),
     )
 

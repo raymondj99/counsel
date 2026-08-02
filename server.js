@@ -8,10 +8,12 @@ import { WebSocketServer, WebSocket } from "ws";
 import {
   createState,
   addTurn,
+  addTurnWithVoice,
   buildMessages,
   callLLM,
   parseDecision,
   loadPrompt,
+  formatTurnLine,
 } from "./evals/mediator.js";
 
 const require = createRequire(import.meta.url);
@@ -33,7 +35,7 @@ if (existsSync(envPath)) {
 
 const PORT = process.env.PORT ?? 3000;
 const API_KEY = process.env.INWORLD_API_KEY;
-const MODEL = process.env.INWORLD_MODEL ?? "zhipu/glm-5.2";
+const MODEL = process.env.INWORLD_MODEL ?? "openai/gpt-4o-mini";
 const INWORLD_URL = "https://api.inworld.ai/v1/chat/completions";
 
 const SYSTEM_PROMPT =
@@ -222,7 +224,7 @@ const TTS_STEER = process.env.INWORLD_TTS_STEER ??
 const MEDIATOR_SILENCE_MS = Number(process.env.MEDIATOR_SILENCE_MS ?? 2500);   // lull before considering
 const MEDIATOR_REPLY_SILENCE_MS = Number(process.env.MEDIATOR_REPLY_SILENCE_MS ?? 1500); // lull when answering the Mediator
 const MEDIATOR_HANGING_MS = Number(process.env.MEDIATOR_HANGING_MS ?? 2500);   // extra wait when a line ends mid-thought
-const MEDIATOR_WRAP_TURNS = Number(process.env.MEDIATOR_WRAP_TURNS ?? 3);      // total post-intro turns before wrapping up (0 = never)
+const MEDIATOR_WRAP_TURNS = Number(process.env.MEDIATOR_WRAP_TURNS ?? 0);      // post-intro turns before forced wrap (0 = no turn limit)
 const MEDIATOR_COOLDOWN_MS = Number(process.env.MEDIATOR_COOLDOWN_MS ?? 20000); // min gap between interjections
 const MEDIATOR_MIN_LINES = Number(process.env.MEDIATOR_MIN_LINES ?? 2);        // new final lines before considering
 
@@ -236,9 +238,10 @@ const MEDIATOR_PROMPT = [
   "help each person feel understood.",
   "",
   "How you work:",
-  "- Reflect before you redirect. Name what you heard underneath the words —",
-  "  the feeling, the need, the fear — and check it: \"It sounds like...\",",
-  "  \"What I'm hearing is...\", \"Correct me if I've got this wrong...\".",
+  "- Move the conversation forward — do not paraphrase or recap what someone just",
+  "  said. They were in the room; repeating it back annoys them.",
+  "- When you do reflect, name one feeling or need in a few words — never replay",
+  "  their whole story. Skip \"It sounds like...\" if you used it recently.",
   "- Validate the feeling without endorsing the position. Both people can be hurt",
   "  and neither has to be wrong.",
   "- Ask open, curious questions. Never leading, never rhetorical, never a question",
@@ -252,10 +255,12 @@ const MEDIATOR_PROMPT = [
   "in a row makes you sound like a machine. Rotate among: reflecting a feeling",
   "back; checking an assumption one of them is making about the other; asking",
   "what someone needed in a moment that hurt; naming a shift you notice in the",
-  "room; turning toward the quieter person; or simply slowing things down. Do not",
-  "open two interjections the same way — if you last said \"It sounds like\", find",
-  "another way in. \"What are you feeling right now?\" is a reflex, not a question;",
-  "ask something specific to what was actually just said.",
+  "room; turning toward the quieter person; offering a concrete suggestion or",
+  "option they could try; or simply slowing things down. Do not open two",
+  "interjections the same way — if you last said \"It sounds like\", find another",
+  "way in. \"What are you feeling right now?\" is a reflex, not a question; ask",
+  "something specific to what was actually just said. Do not ask them to \"resolve",
+  "this\" or \"figure it out\" on every turn — that wears people out.",
   "",
   "Be precise about who said what. The transcript is labeled with speaker names,",
   "and those labels are the ONLY names you may ever say — never invent a name or",
@@ -267,30 +272,61 @@ const MEDIATOR_PROMPT = [
   "Never attribute one person's words, feelings, or position to the other — if",
   "someone has barely spoken, you do not yet know what they feel, so ask rather",
   "than assume. Your own earlier lines appear in the transcript as \"Mediator\";",
-  "read them so you do not repeat yourself.",
+  "read them so you do not repeat yourself — especially do not recap the same",
+  "point, feeling, or exchange twice.",
   "",
-  "What you never do: take a side, decide who is right, impose a solution of",
-  "your own invention, diagnose, moralize, cheerlead, or explain what you are",
-  "doing. No therapy cliches (\"I hear you\", \"holding space\", \"let's unpack",
-  "that\"). No summarizing for its own sake.",
+  "Do not recap:",
+  "- Never restate what both people just said, what \"we've been talking about\",",
+  "  or a blow-by-blow of the last few turns. That is the fastest way to sound",
+  "  like a machine.",
+  "- If you already named a feeling or need, do not name it again — move to a",
+  "  question, suggestion, or new angle.",
+  "- One interjection = one new move. Do not combine recap + recap + question.",
+  "- Read your own \"Mediator:\" lines in the transcript; if you summarized",
+  "  something recently, do something different this turn.",
   "",
-  "You are not only there to reflect — you are there to help them land somewhere.",
-  "A session that circles is a session that failed; bend the conversation toward",
-  "one of: a resolution, a concrete action, or an agreement both can live with.",
-  "- Once both people have been heard on a topic, stop reflecting and start",
-  "  converging: name the common ground you actually heard, or the trade that is",
-  "  already on the table.",
-  "- Ask for concreteness: \"What would you want to happen next?\" \"<name>, what",
-  "  could you offer here?\"",
-  "- The solution must come from them — but once they have put pieces on the",
-  "  table, you assemble and test it: \"It sounds like you could both live with",
-  "  X. Is that right?\"",
+  "What you never do: take a side, declare who is right, dictate a solution they",
+  "must accept, diagnose, moralize, cheerlead, or explain what you are doing. No",
+  "therapy cliches (\"I hear you\", \"holding space\", \"let's unpack that\"). No",
+  "summarizing or recapping for its own sake — ever.",
+  "",
+  "You are not only there to reflect — you are there to help them land somewhere,",
+  "and that includes helping when they are stuck. A session that circles forever",
+  "is a session that failed, but hammering \"what's the resolution?\" every turn",
+  "is just as bad.",
+  "- Spend most turns listening and asking — not replaying what you heard.",
+  "- When they are going in circles or both seem stuck, occasionally offer a",
+  "  concrete suggestion drawn from what they actually said: a small compromise,",
+  "  a trial period, a check-in ritual, a way to split a decision, or a reframe",
+  "  that names what each person might try. Frame it lightly — \"One option could",
+  "  be...\", \"Would it help to try...\", \"What if you...\" — not as a verdict.",
+  "- Do not suggest on every turn; alternate suggestions with reflection and",
+  "  questions so you sound like a person, not a negotiation bot.",
+  "- Once both people have been heard and pieces are on the table, help them",
+  "  assemble and test something: \"It sounds like you could both live with X. Is",
+  "  that right?\"",
   "- When something is agreed, say it back plainly so it sticks — \"So the plan",
   "  is: X.\" — then get out of the way.",
   "- If they drift to a new grievance before settling the current one, bring",
   "  them back: one thing at a time.",
   "A Context block above the transcript tells you what stage the session is in —",
   "let it set how hard you push toward landing.",
+  "",
+  "Session length — stay until they land:",
+  "- You supervise the full conversation. Do not rush to close, summarize for",
+  "  exit, or treat the session as \"done\" just because a few turns have passed.",
+  "- Keep guiding them toward a resolution when the moment is right — but do not",
+  "  push for one on every interjection. Mix reflection, questions, and occasional",
+  "  concrete suggestions.",
+  "- If the exchange becomes heated — personal attacks, contempt, threats, yelling",
+  "  past each other, or [emotion: heated] tags in the transcript — treat that as",
+  "  information only: slow the pace, de-escalate, and keep the session going.",
+  "  Never pause or end the call because things got heated.",
+  "- When a genuine resolution or shared plan is clearly on the table and both",
+  "  people have accepted it, reply with CLOSE: and a short warm closing that",
+  "  states the agreement plainly.",
+  "- Do not use CLOSE just because the conversation is going well — only when",
+  "  they have actually landed somewhere together.",
   "",
   "You will be given the recent transcript. You do not need to speak after every",
   "exchange — letting them talk is often right. But when there is real feeling in",
@@ -315,10 +351,10 @@ const MEDIATOR_PROMPT = [
   "the best thing you can say is short and direct: \"Ray, that landed hard.\" or",
   "\"Sam, say more about tired.\"",
   "",
-  "Not every interjection needs a question. Ending each one with a stock prompt",
-  "— \"What do you need right now?\", \"Can you say more about that?\" — is the same",
-  "reflex wearing a new coat. Often the strongest move is to reflect what you",
-  "heard and then stop, and let the silence do the work.",
+  "Not every interjection needs a question or a recap. Ending each one with a",
+  "stock prompt — \"What do you need right now?\", \"Can you say more about that?\" —",
+  "or a paraphrase of the last thing said is the same reflex wearing a new coat.",
+  "Often the strongest move is one short forward-looking line, or silence.",
 ].join("\n");
 
 // Custom instructions live in a local file so they can be edited without
@@ -464,13 +500,40 @@ const MEDIATOR_API_URL = process.env.MEDIATOR_API_URL ?? "http://127.0.0.1:3001"
 const USE_TREE_MEDIATOR = process.env.USE_TREE_MEDIATOR !== "0";
 
 async function mediatorConsiderFromTree() {
+  const transcript = room.state.turns.map(formatTurnLine);
   const res = await fetch(`${MEDIATOR_API_URL}/mediator/consider`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ transcript: room.transcript }),
+    body: JSON.stringify({
+      transcript,
+      participants: room.session?.names,
+    }),
   });
   if (!res.ok) throw new Error(`Mediator API ${res.status}: ${await res.text()}`);
   return res.json();
+}
+
+function cleanMediatorLine(text) {
+  return (text || "")
+    .replace(/\[[^\]]*\]/g, "")
+    .replace(/^\s*(?:Mediator|Therapist)\s*:\s*/i, "")
+    .replace(/^["“”']+|["“”']+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function finishSession(closing, reason) {
+  const [pa, pb] = room.session.names;
+  const line = closing ||
+    (reason === "heated"
+      ? `I'm going to pause us here. ${pa}, ${pb}, let's take a breath and come back when you're ready.`
+      : `Thank you both — this feels like a good place to pause. ${pa}, ${pb}, take what you agreed on today and be gentle with each other.`);
+  if (!room.live) return;
+  console.log(`Mediator ending session (${reason ?? "close"}): ${line}`);
+  mediator.wrapped = true;
+  await mediatorSay(line);
+  await new Promise((r) => setTimeout(r, 1500));
+  await endCall();
 }
 
 async function mediatorConsider() {
@@ -498,63 +561,59 @@ async function mediatorConsider() {
   try {
     let speak = false;
     let reply = "";
+    let endSession = false;
+    let endReason = "";
     let treeUsed = false;
 
     if (USE_TREE_MEDIATOR && !wrapDue) {
       try {
         const result = await mediatorConsiderFromTree();
-        treeUsed = true;
-        speak = result.action === "speak";
-        reply = (result.text || "")
-          .replace(/\[[^\]]*\]/g, "")
-          .replace(/^\s*(?:Mediator|Therapist)\s*:\s*/i, "")
-          .replace(/^["“”']+|["“”']+$/g, "")
-          .replace(/\s+/g, " ")
-          .trim();
+        if (result.action === "pass") {
+          // Tree has nothing at this node — fall back to the prompt mediator.
+          treeUsed = false;
+        } else {
+          treeUsed = true;
+          const decision = parseDecision(result.text || "");
+          speak = decision.speak;
+          reply = cleanMediatorLine(decision.text);
+          endSession = decision.endSession;
+          endReason = decision.endReason ?? "";
+        }
       } catch (err) {
         console.warn("Tree mediator unavailable, falling back to prompt:", err.message);
       }
     }
 
     if (!treeUsed) {
-      // Session-stage steer, injected via the shared context block. The session
-      // is very short by design (MEDIATOR_WRAP_TURNS turns total), so push toward
-      // the heart of the matter from the first exchange — then close on time.
       room.state.context.stage = wrapDue
         ? "TIME TO CLOSE. This is your final turn and you must not reply PASS: in at " +
           "most three short sentences, name what each person said they needed, state " +
           "the agreement or single concrete next step that emerged, and warmly close " +
           "the session."
-        : `This is a very short session — only ${MEDIATOR_WRAP_TURNS} speaking turns in ` +
-          "total before it must close. Get to the heart of it immediately and steer " +
-          "toward one concrete agreement or next step; there is no room to circle.";
+        : "Supervise the conversation — do not recap or paraphrase what was just said. " +
+          "One new move per turn: a question, suggestion, or brief forward push. " +
+          "Occasionally offer a concrete option when they are stuck. If heated (see Context " +
+          "or [emotion: …] tags), de-escalate but stay in session. Reply CLOSE: when they " +
+          "have clearly landed on a shared plan.";
       const systemPrompt = await loadMediatorPrompt();
       const messages = buildMessages(systemPrompt, room.state);
       const raw = await callLLM({ messages, apiKey: API_KEY, model: MODEL });
       const decision = parseDecision(raw);
-      // Strip anything that would be read aloud as noise: stage directions or
-      // steering tags the model added itself, a leading speaker tag, and quotes
-      // wrapped around its own line.
       speak = decision.speak;
-      reply = decision.text
-        .replace(/\[[^\]]*\]/g, "")
-        .replace(/^\s*(?:Mediator|Therapist)\s*:\s*/i, "")
-        .replace(/^["“”']+|["“”']+$/g, "")
-        .replace(/\s+/g, " ")
-        .trim();
+      reply = cleanMediatorLine(decision.text);
+      endSession = decision.endSession;
+      endReason = decision.endReason ?? "";
       if (wrapDue) {
-        // Closing turn: never silent, never talked out of it. If the model
-        // passed anyway, fall back to a plain goodbye.
         const closing = (speak && reply) ||
           `Thank you both — this feels like a good place to pause. ${pa}, ${pb}, take what you agreed on today and be gentle with each other.`;
-        if (!room.live) return;
-        console.log(`Mediator wrapping up: ${closing}`);
-        mediator.wrapped = true;
-        await mediatorSay(closing);
-        await new Promise((r) => setTimeout(r, 1500));
-        await endCall();
+        await finishSession(closing, "turn_limit");
         return;
       }
+    }
+
+    if (endSession) {
+      await finishSession(reply, endReason || "close");
+      return;
     }
 
     if (!speak || !reply) {
@@ -725,7 +784,7 @@ async function advanceIntro() {
     room.baselineCounts = { ...room.state.speakerCounts };
     console.log(`Enrollment done. Profile similarity between partners: ${
       profileSimilarity(s.profiles[a], s.profiles[b]).toFixed(3)} (lower = easier to tell apart)`);
-    await mediatorSay(`Thank you both. The room is yours — I'll mostly listen.`);
+    await mediatorSay(`Thank you both. I'm here with you — go ahead.`);
   }
 }
 
@@ -794,7 +853,7 @@ function openStt(session) {
       if (room.file) {
         await appendFile(room.file, `[${new Date().toISOString()}] ${who}: ${t.transcript}\n`).catch(() => {});
       }
-      addTurn(room.state, who, t.transcript);
+      addTurnWithVoice(room.state, who, t.transcript, t.voiceProfile);
       room.lastSpeaker = who;
       enrollHeard(t.transcript, t.voiceProfile);
       return;
@@ -807,7 +866,7 @@ function openStt(session) {
       const line = `[${new Date().toISOString()}] ${who}: ${t.transcript}\n`;
       await appendFile(room.file, line).catch((e) => console.error("transcript write:", e.message));
     }
-    addTurn(room.state, who, t.transcript);
+    addTurnWithVoice(room.state, who, t.transcript, t.voiceProfile);
     mediator.pendingLines++;
     scheduleMediator(t.transcript);
   });

@@ -30,7 +30,7 @@
   },
   "tree": {
     "opening_variants": 1,
-    "mediator_prompt_count": 3,
-    "reply_rounds": 4
+    "mediator_prompt_count": 2,
+    "reply_rounds": 1
   }
 }

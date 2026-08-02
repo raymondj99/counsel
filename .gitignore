@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.tools/
 
 # Secrets & local config (never commit)
 .env

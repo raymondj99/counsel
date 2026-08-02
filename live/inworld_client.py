@@ -8,7 +8,7 @@ import urllib.error
 import urllib.request
 
 INWORLD_URL = "https://api.inworld.ai/v1/chat/completions"
-DEFAULT_MODEL = "zhipu/glm-5.2"
+DEFAULT_MODEL = "openai/gpt-4o-mini"
 
 
 class InworldClient:

@@ -1,1 +1,1 @@
-In one short sentence, check your read of what {other_name} raised about {problem_short}. Then ask {other_name} what they'd add or correct.
+In one short sentence, name one feeling or need you noticed — do not replay what {other_name} said. Then ask {other_name} what they'd add or correct.

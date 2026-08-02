@@ -5,8 +5,8 @@ import { useEffect, useRef, useState } from "react";
 const WS_URL = process.env.NEXT_PUBLIC_CALL_WS ?? "ws://localhost:3000/callws";
 
 export default function Home() {
-  const [nameA, setNameA] = useState("");
-  const [nameB, setNameB] = useState("");
+  const [nameA, setNameA] = useState("Maya");
+  const [nameB, setNameB] = useState("Dev");
   const [joined, setJoined] = useState(false);
   const [live, setLive] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -135,7 +135,7 @@ export default function Home() {
             <div className="title">{nameA.trim()} &amp; {nameB.trim()} {mmss}</div>
           ) : (
             <div className="welcome">
-              Welcome, {nameA.trim() || "John"} &amp; {nameB.trim() || "Mary"}. Find a quiet place to talk together.
+              Welcome, {nameA.trim() || "Maya"} &amp; {nameB.trim() || "Dev"}. Find a quiet place to talk together.
             </div>
           )}
           {status && <div className="subtitle">{status}</div>}
@@ -166,8 +166,8 @@ export default function Home() {
         ) : (
           <div className="join">
             <div className="joinRow">
-              <PartnerColumn name={nameA} setName={setNameA} placeholder="First name" onEnter={join} intake={intakeFor(nameA)} />
-              <PartnerColumn name={nameB} setName={setNameB} placeholder="Second name" onEnter={join} intake={intakeFor(nameB)} />
+              <PartnerColumn name={nameA} setName={setNameA} placeholder="Maya" onEnter={join} intake={intakeFor(nameA)} />
+              <PartnerColumn name={nameB} setName={setNameB} placeholder="Dev" onEnter={join} intake={intakeFor(nameB)} />
             </div>
             <button onClick={join}>Start session</button>
           </div>

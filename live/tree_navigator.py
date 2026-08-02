@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,17 @@ MEDIATOR_SPEAK_TYPES = frozenset(
 )
 
 
+def _parse_transcript_line(line: str) -> tuple[str, str] | None:
+    """Parse `Speaker: text` or `[timestamp] Speaker: text` log lines."""
+    match = re.match(r"^(?:\[[^\]]+\]\s*)?([^:]+):\s*(.*)$", line.strip(), re.DOTALL)
+    if not match:
+        return None
+    speaker, text = match.group(1).strip(), match.group(2).strip()
+    if not speaker:
+        return None
+    return speaker, text
+
+
 def load_mediation_tree(path: Path | str) -> MediationTree:
     """Load a serialized tree and ensure success probabilities are present."""
     tree_path = Path(path)
@@ -55,6 +67,18 @@ class TreeNavigator:
         self._spoken_paths: set[str] = set()
         self.user1_name = tree.session.user1.name
         self.user2_name = tree.session.user2.name
+        self._live_aliases: dict[str, str] = {}
+
+    def set_live_participants(self, names: list[str] | None) -> None:
+        """Map whatever names joined the call to tree user1/user2 by seat order."""
+        self._live_aliases = {}
+        if not names or len(names) < 2:
+            return
+        a, b = names[0].strip().lower(), names[1].strip().lower()
+        if a:
+            self._live_aliases[a] = "user1"
+        if b:
+            self._live_aliases[b] = "user2"
 
     @classmethod
     def from_file(cls, path: Path | str) -> TreeNavigator:
@@ -63,6 +87,8 @@ class TreeNavigator:
     def map_speaker(self, live_name: str) -> str | None:
         """Map a live participant name to user1, user2, or mediator."""
         normalized = live_name.strip().lower()
+        if normalized in self._live_aliases:
+            return self._live_aliases[normalized]
         if normalized == self.user1_name.lower():
             return "user1"
         if normalized == self.user2_name.lower():
@@ -79,15 +105,16 @@ class TreeNavigator:
             self._apply_line(line)
 
     def _apply_line(self, line: str) -> None:
-        if ":" not in line:
+        parsed = _parse_transcript_line(line)
+        if parsed is None:
             return
 
-        speaker_raw, _, text = line.partition(":")
-        speaker = self.map_speaker(speaker_raw.strip())
+        speaker_raw, text = parsed
+        speaker = self.map_speaker(speaker_raw)
         if speaker is None or speaker == "mediator":
             return
 
-        self._advance_for_user_turn(speaker, text.strip())
+        self._advance_for_user_turn(speaker, text)
 
     def _advance_for_user_turn(self, speaker: str, _text: str) -> None:
         node = self.current_node()
