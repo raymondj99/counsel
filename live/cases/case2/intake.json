@@ -1,0 +1,36 @@
+{
+  "problem": "Alex and Jordan disagree about how to split household responsibilities after Jordan started working longer hours. Alex feels they're doing most of the chores alone; Jordan feels exhausted and criticized whenever they try to help.",
+  "user1": {
+    "name": "Alex",
+    "background": "Primary caregiver at home who tracks chores and schedules. Gets frustrated when effort goes unnoticed. Tends to reference past examples when feeling overwhelmed.",
+    "stated_goals": [
+      "Fair division of chores",
+      "Acknowledgment of unpaid labor",
+      "A plan that works with Jordan's new schedule"
+    ],
+    "concerns": [
+      "Being taken for granted",
+      "Resentment building over time",
+      "Jordan minimizing their contribution"
+    ]
+  },
+  "user2": {
+    "name": "Jordan",
+    "background": "Recently working longer hours and coming home depleted. Wants clear expectations instead of vague criticism. Avoids conflict until it boils over, then gets defensive.",
+    "stated_goals": [
+      "Clear, realistic chore expectations",
+      "Recognition for financial and emotional support",
+      "Not being blamed for every missed task"
+    ],
+    "concerns": [
+      "Never doing enough in Alex's eyes",
+      "Work stress being ignored",
+      "Fights replacing problem-solving"
+    ]
+  },
+  "tree": {
+    "opening_variants": 3,
+    "mediator_prompt_count": 5,
+    "reply_rounds": 2
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "problem": "Maya and Dev are fighting about a $550 PlayStation 5 purchase Dev made without telling Maya — she found out through the bank app. The fight escalated into whataboutism (Sephora/skincare spending) and both feel the other doesn't play by the same financial rules.",
+  "user1": {
+    "name": "Maya",
+    "background": "Tracks shared finances closely; feels like the only adult in the room when money moves without her knowing. Found the PS5 charge on the bank app. Explodes when Dev deflects or brings up her Sephora spending.",
+    "stated_goals": [
+      "Transparency before big purchases",
+      "Equal accountability",
+      "Not being blindsided"
+    ],
+    "concerns": [
+      "Being the only one keeping track",
+      "Dev's whataboutism",
+      "Dismissive 'sure whatever' consent"
+    ]
+  },
+  "user2": {
+    "name": "Dev",
+    "background": "Bought a PS5 after wanting one for two years; sees it as justified. Counters with Maya's $900 Sephora/skincare spend. Deflects with 'that's not the point' and competitive fairness arguments. Avoids until cornered.",
+    "stated_goals": [
+      "Autonomy over discretionary purchases",
+      "Not being monitored or policed",
+      "Same rules for both partners"
+    ],
+    "concerns": [
+      "Double standards",
+      "Being accused unfairly",
+      "Maya escalating over money"
+    ]
+  },
+  "tree": {
+    "opening_variants": 1,
+    "mediator_prompt_count": 2,
+    "reply_rounds": 1
+  }
+}

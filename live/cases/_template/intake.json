@@ -1,0 +1,28 @@
+{
+  "problem": "Describe the conflict in 1–3 sentences. What happened, and why does it matter to both people?",
+  "user1": {
+    "name": "Person A",
+    "background": "Who they are, how they communicate under stress, and relevant history for this conflict.",
+    "stated_goals": [
+      "What they want from this conversation"
+    ],
+    "concerns": [
+      "What they're afraid of"
+    ]
+  },
+  "user2": {
+    "name": "Person B",
+    "background": "Who they are, how they communicate under stress, and relevant history for this conflict.",
+    "stated_goals": [
+      "What they want from this conversation"
+    ],
+    "concerns": [
+      "What they're afraid of"
+    ]
+  },
+  "tree": {
+    "opening_variants": 3,
+    "mediator_prompt_count": 5,
+    "reply_rounds": 2
+  }
+}
