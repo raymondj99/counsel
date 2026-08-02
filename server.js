@@ -167,6 +167,7 @@ const MEDIATOR_SILENCE_MS = 2000;      // wait for a lull before considering an 
 const MEDIATOR_COOLDOWN_MS = 20000;    // minimum gap between interjections
 const MEDIATOR_MIN_LINES = 2;          // new final lines required before considering
 
+// Default mediator instructions, used if mediator-prompt.md is missing or empty.
 const MEDIATOR_PROMPT =
   "You are the Mediator, a calm, impartial third voice listening to a live voice " +
   "call between two people. Speak when it helps: defusing tension, clarifying a " +
@@ -177,6 +178,22 @@ const MEDIATOR_PROMPT =
   "the words you would say aloud: one or two short, neutral, conversational " +
   "sentences. Never take sides, never lecture, and never include stage directions " +
   "or speaker tags.";
+
+// Custom instructions live in a local file so they can be edited without
+// touching code or restarting the server — it's re-read on every interjection.
+const MEDIATOR_PROMPT_FILE = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  process.env.MEDIATOR_PROMPT_FILE ?? "evals/mediator-prompt.md",
+);
+
+async function loadMediatorPrompt() {
+  try {
+    const text = (await readFile(MEDIATOR_PROMPT_FILE, "utf8")).trim();
+    return text || MEDIATOR_PROMPT;
+  } catch {
+    return MEDIATOR_PROMPT;
+  }
+}
 
 const mediator = { timer: null, busy: false, lastSpokeAt: 0, pendingLines: 0 };
 
@@ -231,13 +248,14 @@ async function mediatorConsider() {
   mediator.pendingLines = 0;
   try {
     const recent = room.transcript.slice(-30).join("\n");
+    const systemPrompt = await loadMediatorPrompt();
     const res = await fetch(INWORLD_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Basic ${API_KEY}` },
       body: JSON.stringify({
         model: MODEL,
         messages: [
-          { role: "system", content: MEDIATOR_PROMPT },
+          { role: "system", content: systemPrompt },
           { role: "user", content: `Recent transcript:\n${recent}\n\nRespond with PASS or your interjection.` },
         ],
       }),
