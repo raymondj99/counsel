@@ -1,5 +1,7 @@
 import http from "node:http";
 import { readFile, appendFile, mkdir } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
@@ -12,9 +14,26 @@ import {
   loadPrompt,
 } from "./evals/mediator.js";
 
+const require = createRequire(import.meta.url);
+const fetch = globalThis.fetch ?? require("node-fetch");
+
+const __dir = path.dirname(fileURLToPath(import.meta.url));
+const envPath = path.join(__dir, ".env");
+if (existsSync(envPath)) {
+  for (const line of readFileSync(envPath, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const val = trimmed.slice(eq + 1).trim();
+    if (key && process.env[key] === undefined) process.env[key] = val;
+  }
+}
+
 const PORT = process.env.PORT ?? 3000;
 const API_KEY = process.env.INWORLD_API_KEY;
-const MODEL = process.env.INWORLD_MODEL ?? "openai/gpt-4o-mini";
+const MODEL = process.env.INWORLD_MODEL ?? "zhipu/glm-5.2";
 const INWORLD_URL = "https://api.inworld.ai/v1/chat/completions";
 
 const SYSTEM_PROMPT =
@@ -441,6 +460,19 @@ function effectiveTurns(name) {
   return (room.state.speakerCounts[name] ?? 0) - (room.baselineCounts?.[name] ?? 0);
 }
 
+const MEDIATOR_API_URL = process.env.MEDIATOR_API_URL ?? "http://127.0.0.1:3001";
+const USE_TREE_MEDIATOR = process.env.USE_TREE_MEDIATOR !== "0";
+
+async function mediatorConsiderFromTree() {
+  const res = await fetch(`${MEDIATOR_API_URL}/mediator/consider`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ transcript: room.transcript }),
+  });
+  if (!res.ok) throw new Error(`Mediator API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
 async function mediatorConsider() {
   if (!room.live || mediator.busy || room.enrolling) return;
   // If speech was in flight moments ago, the pause isn't real yet — try again
@@ -464,44 +496,68 @@ async function mediatorConsider() {
   mediator.busy = true;
   mediator.pendingLines = 0;
   try {
-    // Session-stage steer, injected via the shared context block. The session
-    // is very short by design (MEDIATOR_WRAP_TURNS turns total), so push toward
-    // the heart of the matter from the first exchange — then close on time.
-    room.state.context.stage = wrapDue
-      ? "TIME TO CLOSE. This is your final turn and you must not reply PASS: in at " +
-        "most three short sentences, name what each person said they needed, state " +
-        "the agreement or single concrete next step that emerged, and warmly close " +
-        "the session."
-      : `This is a very short session — only ${MEDIATOR_WRAP_TURNS} speaking turns in ` +
-        "total before it must close. Get to the heart of it immediately and steer " +
-        "toward one concrete agreement or next step; there is no room to circle.";
-    const systemPrompt = await loadMediatorPrompt();
-    const messages = buildMessages(systemPrompt, room.state);
-    const raw = await callLLM({ messages, apiKey: API_KEY, model: MODEL });
-    const decision = parseDecision(raw);
-    // Strip anything that would be read aloud as noise: stage directions or
-    // steering tags the model added itself, a leading speaker tag, and quotes
-    // wrapped around its own line.
-    const reply = decision.text
-      .replace(/\[[^\]]*\]/g, "")
-      .replace(/^\s*(?:Mediator|Therapist)\s*:\s*/i, "")
-      .replace(/^["“”']+|["“”']+$/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (wrapDue) {
-      // Closing turn: never silent, never talked out of it. If the model
-      // passed anyway, fall back to a plain goodbye.
-      const closing = (decision.speak && reply) ||
-        `Thank you both — this feels like a good place to pause. ${pa}, ${pb}, take what you agreed on today and be gentle with each other.`;
-      if (!room.live) return;
-      console.log(`Mediator wrapping up: ${closing}`);
-      mediator.wrapped = true;
-      await mediatorSay(closing);
-      await new Promise((r) => setTimeout(r, 1500));
-      await endCall();
-      return;
+    let speak = false;
+    let reply = "";
+    let treeUsed = false;
+
+    if (USE_TREE_MEDIATOR && !wrapDue) {
+      try {
+        const result = await mediatorConsiderFromTree();
+        treeUsed = true;
+        speak = result.action === "speak";
+        reply = (result.text || "")
+          .replace(/\[[^\]]*\]/g, "")
+          .replace(/^\s*(?:Mediator|Therapist)\s*:\s*/i, "")
+          .replace(/^["“”']+|["“”']+$/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
+      } catch (err) {
+        console.warn("Tree mediator unavailable, falling back to prompt:", err.message);
+      }
     }
-    if (!decision.speak || !reply) {
+
+    if (!treeUsed) {
+      // Session-stage steer, injected via the shared context block. The session
+      // is very short by design (MEDIATOR_WRAP_TURNS turns total), so push toward
+      // the heart of the matter from the first exchange — then close on time.
+      room.state.context.stage = wrapDue
+        ? "TIME TO CLOSE. This is your final turn and you must not reply PASS: in at " +
+          "most three short sentences, name what each person said they needed, state " +
+          "the agreement or single concrete next step that emerged, and warmly close " +
+          "the session."
+        : `This is a very short session — only ${MEDIATOR_WRAP_TURNS} speaking turns in ` +
+          "total before it must close. Get to the heart of it immediately and steer " +
+          "toward one concrete agreement or next step; there is no room to circle.";
+      const systemPrompt = await loadMediatorPrompt();
+      const messages = buildMessages(systemPrompt, room.state);
+      const raw = await callLLM({ messages, apiKey: API_KEY, model: MODEL });
+      const decision = parseDecision(raw);
+      // Strip anything that would be read aloud as noise: stage directions or
+      // steering tags the model added itself, a leading speaker tag, and quotes
+      // wrapped around its own line.
+      speak = decision.speak;
+      reply = decision.text
+        .replace(/\[[^\]]*\]/g, "")
+        .replace(/^\s*(?:Mediator|Therapist)\s*:\s*/i, "")
+        .replace(/^["“”']+|["“”']+$/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (wrapDue) {
+        // Closing turn: never silent, never talked out of it. If the model
+        // passed anyway, fall back to a plain goodbye.
+        const closing = (speak && reply) ||
+          `Thank you both — this feels like a good place to pause. ${pa}, ${pb}, take what you agreed on today and be gentle with each other.`;
+        if (!room.live) return;
+        console.log(`Mediator wrapping up: ${closing}`);
+        mediator.wrapped = true;
+        await mediatorSay(closing);
+        await new Promise((r) => setTimeout(r, 1500));
+        await endCall();
+        return;
+      }
+    }
+
+    if (!speak || !reply) {
       console.log("Mediator considered, passed.");
       return;
     }
@@ -869,7 +925,23 @@ callWss.on("connection", (ws) => {
   });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`Agent "Nova" ready on http://localhost:${PORT} (model: ${MODEL})`);
   console.log(`Text: /  Voice: /voice  Call room: /call`);
+  if (USE_TREE_MEDIATOR) {
+    console.log(`Tree mediator: ${MEDIATOR_API_URL} (set USE_TREE_MEDIATOR=0 to disable)`);
+    try {
+      const res = await fetch(`${MEDIATOR_API_URL}/health`);
+      if (res.ok) {
+        const health = await res.json();
+        if (health.case) console.log(`Mediator case: ${health.case}`);
+        if (health.tree_file) console.log(`Conversation tree: ${health.tree_file}`);
+        if (health.user1 && health.user2) {
+          console.log(`Session: ${health.user1} & ${health.user2}`);
+        }
+      }
+    } catch {
+      console.warn("Tree mediator not reachable yet — start it with: npm run mediator -- --case case1");
+    }
+  }
 });

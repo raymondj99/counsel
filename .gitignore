@@ -1,4 +1,33 @@
+# Dependencies
 node_modules/
+
+# Secrets & local config (never commit)
 .env
+.env.*
+!.env.example
+config.local.env
+*.local.env
+
+# Runtime output
 transcripts/
 intake/submissions/
+logs/
+live/cases/*/session.json
+live/cases/*/simulated_conversation_tree.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

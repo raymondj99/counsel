@@ -4,9 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node --env-file-if-exists=.env server.js"
+    "start": "node server.js",
+    "mediator": "python live/serve.py",
+    "launch": "node scripts/launch.mjs"
   },
   "dependencies": {
+    "node-fetch": "^2.7.0",
     "ws": "^8.21.1"
   }
 }
