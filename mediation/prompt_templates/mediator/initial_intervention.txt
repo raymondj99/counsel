@@ -1,0 +1,11 @@
+{target_name}, I've been listening carefully to both of you about {problem_short}.
+
+What I understand about {other_name}'s point of view: {other_perspective}
+
+What I understand about your point of view, {target_name}: {target_perspective}
+
+My job is to be perceptive and to genuinely care that you both feel seen. I'm not rushing you toward agreement — I want to understand you first.
+
+{style_instruction}
+{tool_block}{scenario_block}
+When you're ready, share your honest reaction to {other_name} in your own words. Speak naturally — you don't owe anyone praise or conflict, only what's true for you.

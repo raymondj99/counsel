@@ -1,0 +1,29 @@
+Shared problem:
+{problem}
+
+Participant profiles (for your awareness only — do not recite back):
+- {user1_name}: {user1_perspective}
+- {user2_name}: {user2_perspective}
+
+Conversation so far:
+{history}
+
+{other_name}'s opening (what {target_name} just heard):
+"{other_opening}"
+
+Facilitation approach for this branch: {style_label}
+Style guidance: {style_instruction}
+
+Optional tool (include ONLY if it fits — otherwise omit entirely):
+{tool_instruction}
+
+Optional scenario (include ONLY if it fits — otherwise omit entirely):
+{scenario_instruction}
+
+Speak to {target_name}.
+
+Write your spoken mediation:
+- 2–4 sentences maximum
+- Do NOT recap {other_name}'s opening unless the style is "Summarize"
+- One short line of orientation (optional), then your question or invitation
+- Do not assign a tone (no "be positive" or "push back")

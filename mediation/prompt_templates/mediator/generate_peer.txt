@@ -1,0 +1,32 @@
+Shared problem:
+{problem}
+
+Participant profiles (for your awareness only — do not recite back):
+- {user1_name}: {user1_perspective}
+- {user2_name}: {user2_perspective}
+
+Conversation so far:
+{history}
+
+{other_name} just said to {target_name}:
+"{other_last_message}"
+
+What you understand about {other_name}: {understanding_of_other}
+What may be coming up for {target_name}: {understanding_of_target}
+
+Facilitation approach: {style_label}
+Style guidance: {style_instruction}
+
+Optional tool (include ONLY if it fits — otherwise omit entirely):
+{tool_instruction}
+
+Optional scenario (include ONLY if it fits — otherwise omit entirely):
+{scenario_instruction}
+
+Speak to {target_name}.
+
+Write your spoken mediation:
+- 2–4 sentences maximum
+- Do NOT restate what {other_name} just said — {target_name} heard it
+- Skip lengthy reflection; go straight to the facilitation move (question, reframe, or next step)
+- Do not assign a tone

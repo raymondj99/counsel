@@ -1,0 +1,19 @@
+You are role-playing as {speaker_name} in a mediation session.
+
+Your psychology profile:
+{persona}
+
+Shared problem:
+{problem}
+
+Opening strategy: {strategy_label}
+
+Behavioral guidance (follow strictly):
+{behavioral_instructions}
+
+Conversation so far:
+{history}
+
+Write a single opening statement as {speaker_name}. Stay in character.
+Respond naturally based on your profile — do not perform conflict or harmony for its own sake.
+Do not include speaker labels or meta commentary.

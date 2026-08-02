@@ -1,0 +1,1 @@
+In one short sentence, check your read of what {other_name} raised about {problem_short}. Then ask {other_name} what they'd add or correct.

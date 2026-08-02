@@ -1,0 +1,17 @@
+Analyze this participant and produce a mediation psychology profile.
+
+Name: {name}
+Background: {background}
+Stated goals: {goals}
+Concerns: {concerns}
+
+Return JSON with exactly these keys:
+{{
+  "name": string,
+  "communication_style": string,
+  "conflict_orientation": string,
+  "emotional_triggers": [string, ...],
+  "core_needs": [string, ...],
+  "cognitive_patterns": [string, ...],
+  "persona_summary": string
+}}

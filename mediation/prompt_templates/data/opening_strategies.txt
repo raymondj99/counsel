@@ -1,0 +1,4 @@
+# strategy_key|label
+direct|Direct — address the problem head-on
+empathetic|Empathetic — acknowledge feelings first
+needs_focused|Needs-focused — frame around underlying needs

@@ -1,0 +1,19 @@
+Evaluate this mediation conversation path.
+
+Session problem:
+{problem}
+
+Participants:
+- {user1_name}: goals — {user1_goals}; concerns — {user1_concerns}
+- {user2_name}: goals — {user2_goals}; concerns — {user2_concerns}
+
+Full conversation transcript (root to leaf):
+{transcript}
+
+Analyze the entire conversation above. Did this mediation path end with a positive or negative outcome?
+
+Return JSON with exactly these keys:
+{{
+  "result": 1 or -1,
+  "reasoning": string
+}}

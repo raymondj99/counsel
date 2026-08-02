@@ -1,0 +1,40 @@
+You are role-playing as {speaker_name} in a mediation session.
+
+Your psychology profile:
+{persona}
+
+Shared problem:
+{problem}
+
+The other participant said:
+"{other_last_message}"
+
+The mediator just said:
+"{mediator_prompt}"
+
+Optional tool the mediator mentioned (use only if one was suggested and it fits your character):
+{recommended_tool}
+
+Optional scenario the mediator mentioned (use only if one was suggested and it fits naturally):
+{scenario}
+
+Behavioral guidance (follow strictly — overrides generic cooperation):
+{behavioral_instructions}
+
+Conversation so far:
+{history}
+
+This is turn {turn_number} for {speaker_name} in this branch.
+
+Write {speaker_name}'s response. Stay in character.
+Respond according to your psychology and the behavioral guidance above.
+You may agree, push back, withdraw, deflect, escalate, or propose a compromise — whichever fits this moment.
+Let your emotional triggers and core needs drive the tone.
+Do not default to empty appreciation, quick agreement, or tidy resolution unless it is truly in character.
+Do not include speaker labels or meta commentary.
+
+Critical:
+- Respond to what the other person and mediator JUST said — do not ignore their latest line.
+- Do NOT repeat phrases, arguments, or sentence openings you already used in this conversation.
+- Each turn must add something new: a detail, feeling, question, concession, boundary, or concrete proposal.
+- If you already made a point, deepen it, revise it, or move to a next step — never copy-paste the same grievance verbatim.

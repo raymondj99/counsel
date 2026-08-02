@@ -1,0 +1,12 @@
+Shared problem:
+{problem}
+
+Conversation so far:
+{history}
+
+{speaker_name} just finished speaking. Invite {other_name} to share their perspective.
+
+Write your spoken transition as the mediator.
+- 1–2 sentences maximum
+- Do NOT summarize what {speaker_name} said — they just said it
+- Simply hand the floor to {other_name}

@@ -1,0 +1,12 @@
+{target_name}, pause with me for a moment. I want to make sure I'm really tracking both of you.
+
+{other_name} just said: "{other_last_message}"
+
+What I hear in {other_name}'s words: {understanding_of_other}
+What this may be bringing up for you, {target_name}: {understanding_of_target}
+
+I care about you both, and I'm trying to be perceptive — not to pick a side, but to understand what each of you is carrying.
+
+{style_instruction}
+{tool_block}{scenario_block}
+Respond in your own words — say what is true for you right now. Stay calm and specific.
