@@ -5,7 +5,8 @@ import { useEffect, useRef, useState } from "react";
 const WS_URL = process.env.NEXT_PUBLIC_CALL_WS ?? "ws://localhost:3000/callws";
 
 export default function Home() {
-  const [name, setName] = useState("");
+  const [nameA, setNameA] = useState("");
+  const [nameB, setNameB] = useState("");
   const [joined, setJoined] = useState(false);
   const [live, setLive] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -64,31 +65,26 @@ export default function Home() {
   }, [live]);
 
   async function join() {
-    if (!name.trim()) return;
+    if (!nameA.trim() || !nameB.trim()) return;
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
-    ws.onopen = () => ws.send(JSON.stringify({ type: "join", name: name.trim() }));
+    ws.onopen = () => ws.send(JSON.stringify({ type: "join", names: [nameA.trim(), nameB.trim()] }));
     ws.onclose = () => { setLive(false); setStatus("Disconnected."); stopAudio(audioRef.current); };
     ws.onmessage = async (e) => {
       const msg = JSON.parse(e.data);
       if (msg.type === "error") setStatus(msg.message);
-      if (msg.type === "room") {
-        if (msg.live) {
-          setLive(true);
-          setStatus("");
-          await startAudio(audioRef.current, ws, mutedRef, levelRef);
-        } else {
-          setLive(false);
-          setStatus(msg.participants.length < 2 ? "Waiting for the second participant…" : "");
-        }
+      if (msg.type === "room" && msg.live) {
+        setLive(true);
+        setStatus("");
+        await startAudio(audioRef.current, ws, mutedRef, levelRef);
       }
       if (msg.type === "audio") playRemote(audioRef.current, msg.data);
       if (msg.type === "level") levelRef.current = Math.max(levelRef.current, msg.level);
-      if (msg.type === "transcript") setCaption({ who: msg.user, text: msg.text });
+      if (msg.type === "transcript") setCaption(msg.text ? { who: msg.user, text: msg.text } : null);
       if (msg.type === "ended") setStatus(`Call ended. Transcript saved${msg.file ? `: transcripts/${msg.file}` : "."}`);
     };
     setJoined(true);
-    setStatus("Joining…");
+    setStatus("Starting…");
   }
 
   function endCall() {
@@ -111,9 +107,11 @@ export default function Home() {
         <div className="card">
         <header className="header">
           {joined && live ? (
-            <div className="title">{name} {mmss}</div>
+            <div className="title">{nameA.trim()} &amp; {nameB.trim()} {mmss}</div>
           ) : (
-            <div className="welcome">Welcome, {name.trim() || "John"}. Find a quiet place to talk.</div>
+            <div className="welcome">
+              Welcome, {nameA.trim() || "John"} &amp; {nameB.trim() || "Mary"}. Find a quiet place to talk together.
+            </div>
           )}
           {status && <div className="subtitle">{status}</div>}
         </header>
@@ -143,13 +141,20 @@ export default function Home() {
         ) : (
           <div className="join">
             <input
-              placeholder="Your name"
+              placeholder="First name"
               maxLength={32}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              value={nameA}
+              onChange={(e) => setNameA(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && join()}
             />
-            <button onClick={join}>Join call</button>
+            <input
+              placeholder="Second name"
+              maxLength={32}
+              value={nameB}
+              onChange={(e) => setNameB(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && join()}
+            />
+            <button onClick={join}>Start session</button>
           </div>
         )}
         </div>

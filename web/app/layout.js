@@ -10,7 +10,7 @@ const serif = Source_Serif_4({
 
 export const metadata = {
   title: "Counsel",
-  description: "Two-person voice call with a live transcript",
+  description: "A couple's voice session with a listening mediator and live transcript",
 };
 
 export default function RootLayout({ children }) {

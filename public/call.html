@@ -120,6 +120,11 @@
     function renderTranscript(user, text, final) {
       const idx = Math.max(0, participants.indexOf(user));
       let el = interimEls[user];
+      if (final && !text) {
+        // Server dropped this line (duplicate/echo) — clear the interim, add nothing.
+        if (el) { el.remove(); delete interimEls[user]; }
+        return;
+      }
       if (!el) {
         el = document.createElement("div");
         el.innerHTML = `<span class="who"></span><span class="txt"></span>`;
