@@ -13,6 +13,7 @@ export default function Home() {
   const [status, setStatus] = useState("");
   const [caption, setCaption] = useState(null);
   const [elapsed, setElapsed] = useState(0);
+  const [intakeSubmissions, setIntakeSubmissions] = useState([]);
 
   const wsRef = useRef(null);
   const mutedRef = useRef(false);
@@ -63,6 +64,30 @@ export default function Home() {
     const id = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 500);
     return () => clearInterval(id);
   }, [live]);
+
+  /* Intake responses: loaded on mount, and re-checked whenever the tab
+     regains focus (e.g. after filling out the intake form in a new tab). */
+  useEffect(() => {
+    async function loadIntake() {
+      try {
+        const res = await fetch("/api/intake");
+        const data = await res.json();
+        setIntakeSubmissions(data.submissions ?? []);
+      } catch {
+        // Intake status is a nice-to-have on this screen; ignore failures.
+      }
+    }
+    loadIntake();
+    window.addEventListener("focus", loadIntake);
+    return () => window.removeEventListener("focus", loadIntake);
+  }, []);
+
+  function intakeFor(partnerName) {
+    const target = partnerName.trim().toLowerCase();
+    if (!target) return null;
+    const matches = intakeSubmissions.filter((s) => s.name.trim().toLowerCase() === target);
+    return matches[matches.length - 1] ?? null;
+  }
 
   async function join() {
     if (!nameA.trim() || !nameB.trim()) return;
@@ -140,26 +165,55 @@ export default function Home() {
           </div>
         ) : (
           <div className="join">
-            <input
-              placeholder="First name"
-              maxLength={32}
-              value={nameA}
-              onChange={(e) => setNameA(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && join()}
-            />
-            <input
-              placeholder="Second name"
-              maxLength={32}
-              value={nameB}
-              onChange={(e) => setNameB(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && join()}
-            />
+            <div className="joinRow">
+              <PartnerColumn name={nameA} setName={setNameA} placeholder="First name" onEnter={join} intake={intakeFor(nameA)} />
+              <PartnerColumn name={nameB} setName={setNameB} placeholder="Second name" onEnter={join} intake={intakeFor(nameB)} />
+            </div>
             <button onClick={join}>Start session</button>
           </div>
         )}
         </div>
       </main>
     </>
+  );
+}
+
+function PartnerColumn({ name, setName, placeholder, onEnter, intake }) {
+  const trimmed = name.trim();
+  return (
+    <div className="partnerCol">
+      <input
+        placeholder={placeholder}
+        maxLength={32}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && onEnter()}
+      />
+      <button
+        type="button"
+        className="intakeBtn"
+        disabled={!trimmed}
+        onClick={() => window.open(`/intake?name=${encodeURIComponent(trimmed)}`, "_blank", "noopener,noreferrer")}
+      >
+        Take intake
+      </button>
+      {intake && <IntakeSummary intake={intake} />}
+    </div>
+  );
+}
+
+function IntakeSummary({ intake }) {
+  const bands = intake.personality?.bands ?? {};
+  return (
+    <div className="intakeSummary">
+      <div className="intakeDone">✓ Intake completed</div>
+      {Object.entries(bands).map(([domain, band]) => (
+        <div className="intakeLine" key={domain}>
+          <span>{domain.replace("_", " ")}</span>
+          <span>{band ?? "—"}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
