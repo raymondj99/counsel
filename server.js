@@ -3,6 +3,14 @@ import { readFile, appendFile, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
+import {
+  createState,
+  addTurn,
+  buildMessages,
+  callLLM,
+  parseDecision,
+  loadPrompt,
+} from "./evals/mediator.js";
 
 const PORT = process.env.PORT ?? 3000;
 const API_KEY = process.env.INWORLD_API_KEY;
@@ -159,7 +167,7 @@ const room = {
   session: null,       // { ws, names:[a,b], stt, pendingAudio, lastInterim, profiles:{name:voiceProfile} }
   live: false,
   file: null,
-  transcript: [],
+  state: createState(),// shared conversation state (turns + derived context), same shape as evals
   enrolling: null,     // name currently being asked to introduce themselves, or null
   lastSpeaker: null,   // most recently attributed partner, fallback when a profile is ambiguous
 };
@@ -191,6 +199,9 @@ const MEDIATOR_SILENCE_MS = Number(process.env.MEDIATOR_SILENCE_MS ?? 2500);   /
 const MEDIATOR_COOLDOWN_MS = Number(process.env.MEDIATOR_COOLDOWN_MS ?? 20000); // min gap between interjections
 const MEDIATOR_MIN_LINES = Number(process.env.MEDIATOR_MIN_LINES ?? 2);        // new final lines before considering
 
+// Default mediator instructions, used if mediator-prompt.md is missing or empty.
+// The live prompt is evals/mediator-prompt.md (same text), re-read on every
+// interjection so it can be edited without touching code or restarting.
 const MEDIATOR_PROMPT = [
   "You are the Mediator: a warm, seasoned couples therapist sitting in on a live",
   "conversation between two people. You are in the room with them, not observing",
@@ -265,6 +276,15 @@ const MEDIATOR_PROMPT = [
   "heard and then stop, and let the silence do the work.",
 ].join("\n");
 
+// Custom instructions live in a local file so they can be edited without
+// touching code or restarting the server — it's re-read on every interjection.
+const MEDIATOR_PROMPT_FILE = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  process.env.MEDIATOR_PROMPT_FILE ?? "evals/mediator-prompt.md",
+);
+
+const loadMediatorPrompt = () => loadPrompt(MEDIATOR_PROMPT_FILE, MEDIATOR_PROMPT);
+
 const mediator = { timer: null, busy: false, lastSpokeAt: 0, pendingLines: 0, lastReplyNorm: "" };
 
 function wavToPcm(buf) {
@@ -327,30 +347,20 @@ async function mediatorConsider() {
   mediator.busy = true;
   mediator.pendingLines = 0;
   try {
-    const recent = room.transcript.slice(-30).join("\n");
-    const res = await fetch(INWORLD_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Basic ${API_KEY}` },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          { role: "system", content: MEDIATOR_PROMPT },
-          { role: "user", content: `Recent transcript:\n${recent}\n\nRespond with PASS or your interjection.` },
-        ],
-      }),
-    });
-    if (!res.ok) throw new Error(`Inworld API ${res.status}: ${await res.text()}`);
-    const raw = (await res.json()).choices[0].message.content.trim();
+    const systemPrompt = await loadMediatorPrompt();
+    const messages = buildMessages(systemPrompt, room.state);
+    const raw = await callLLM({ messages, apiKey: API_KEY, model: MODEL });
+    const decision = parseDecision(raw);
     // Strip anything that would be read aloud as noise: stage directions or
     // steering tags the model added itself, a leading speaker tag, and quotes
     // wrapped around its own line.
-    const reply = raw
+    const reply = decision.text
       .replace(/\[[^\]]*\]/g, "")
       .replace(/^\s*(?:Mediator|Therapist)\s*:\s*/i, "")
       .replace(/^["“”']+|["“”']+$/g, "")
       .replace(/\s+/g, " ")
       .trim();
-    if (!reply || /^PASS\b/i.test(reply)) {
+    if (!decision.speak || !reply) {
       console.log("Mediator considered, passed.");
       return;
     }
@@ -368,7 +378,7 @@ async function mediatorConsider() {
 async function mediatorSay(text) {
   mediator.lastReplyNorm = normText(text);
   mediator.lastSpokeAt = Date.now();   // opens the echo window; refreshed after speaking
-  room.transcript.push(`${MEDIATOR}: ${text}`);
+  addTurn(room.state, MEDIATOR, text);
   broadcast({ type: "transcript", user: MEDIATOR, text, final: true });
   if (room.file) {
     await appendFile(room.file, `[${new Date().toISOString()}] ${MEDIATOR}: ${text}\n`).catch(() => {});
@@ -558,7 +568,7 @@ function openStt(session) {
       if (room.file) {
         await appendFile(room.file, `[${new Date().toISOString()}] ${who}: ${t.transcript}\n`).catch(() => {});
       }
-      room.transcript.push(`${who}: ${t.transcript}`);
+      addTurn(room.state, who, t.transcript);
       room.lastSpeaker = who;
       enrollHeard(t.transcript, t.voiceProfile);
       return;
@@ -571,7 +581,7 @@ function openStt(session) {
       const line = `[${new Date().toISOString()}] ${who}: ${t.transcript}\n`;
       await appendFile(room.file, line).catch((e) => console.error("transcript write:", e.message));
     }
-    room.transcript.push(`${who}: ${t.transcript}`);
+    addTurn(room.state, who, t.transcript);
     mediator.pendingLines++;
     scheduleMediator();
   });
@@ -581,7 +591,7 @@ function openStt(session) {
 
 async function goLive() {
   room.live = true;
-  room.transcript = [];
+  room.state = createState();
   room.lastSpeaker = null;
   mediator.pendingLines = 0;
   mediator.lastSpokeAt = 0;
