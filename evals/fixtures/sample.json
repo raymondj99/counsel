@@ -1,0 +1,10 @@
+{
+  "context": { "topic": "splitting rent after one moved out" },
+  "turns": [
+    { "speaker": "Alice", "text": "You said you'd cover half the rent this month and you didn't." },
+    { "speaker": "Bob", "text": "I moved out on the 3rd, why would I pay for a place I'm not living in?" },
+    { "speaker": "Alice", "text": "Because the lease is in both our names until August." },
+    { "speaker": "Bob", "text": "That's not fair, you're the one who wanted me gone." },
+    { "speaker": "Alice", "text": "I never said that. I just need us to figure out the money." }
+  ]
+}

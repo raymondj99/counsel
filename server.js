@@ -3,6 +3,14 @@ import { readFile, appendFile, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
+import {
+  createState,
+  addTurn,
+  buildMessages,
+  callLLM,
+  parseDecision,
+  loadPrompt,
+} from "./evals/mediator.js";
 
 const PORT = process.env.PORT ?? 3000;
 const API_KEY = process.env.INWORLD_API_KEY;
@@ -151,7 +159,7 @@ const STT_MODEL = process.env.INWORLD_STT_MODEL ?? "inworld/inworld-stt-1";
 const SAMPLE_RATE = 16000;
 const transcriptsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "transcripts");
 
-const room = { participants: new Map(), live: false, file: null, transcript: [] };
+const room = { participants: new Map(), live: false, file: null, state: createState() };
 
 // ── Mediator agent: a third, virtual participant that listens to the live
 // transcript and occasionally interjects with a short spoken comment. It
@@ -186,14 +194,7 @@ const MEDIATOR_PROMPT_FILE = path.join(
   process.env.MEDIATOR_PROMPT_FILE ?? "evals/mediator-prompt.md",
 );
 
-async function loadMediatorPrompt() {
-  try {
-    const text = (await readFile(MEDIATOR_PROMPT_FILE, "utf8")).trim();
-    return text || MEDIATOR_PROMPT;
-  } catch {
-    return MEDIATOR_PROMPT;
-  }
-}
+const loadMediatorPrompt = () => loadPrompt(MEDIATOR_PROMPT_FILE, MEDIATOR_PROMPT);
 
 const mediator = { timer: null, busy: false, lastSpokeAt: 0, pendingLines: 0 };
 
@@ -247,29 +248,18 @@ async function mediatorConsider() {
   mediator.busy = true;
   mediator.pendingLines = 0;
   try {
-    const recent = room.transcript.slice(-30).join("\n");
     const systemPrompt = await loadMediatorPrompt();
-    const res = await fetch(INWORLD_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Basic ${API_KEY}` },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Recent transcript:\n${recent}\n\nRespond with PASS or your interjection.` },
-        ],
-      }),
-    });
-    if (!res.ok) throw new Error(`Inworld API ${res.status}: ${await res.text()}`);
-    const reply = (await res.json()).choices[0].message.content.trim();
-    if (!reply || /^PASS\b/i.test(reply)) {
+    const messages = buildMessages(systemPrompt, room.state);
+    const raw = await callLLM({ messages, apiKey: API_KEY, model: MODEL });
+    const { speak, text: reply } = parseDecision(raw);
+    if (!speak) {
       console.log("Mediator considered, passed.");
       return;
     }
     if (!room.live) return;
     console.log(`Mediator interjecting: ${reply}`);
 
-    room.transcript.push(`${MEDIATOR}: ${reply}`);
+    addTurn(room.state, MEDIATOR, reply);
     broadcast({ type: "transcript", user: MEDIATOR, text: reply, final: true });
     if (room.file) {
       await appendFile(room.file, `[${new Date().toISOString()}] ${MEDIATOR}: ${reply}\n`).catch(() => {});
@@ -323,7 +313,7 @@ function openStt(participant) {
         const line = `[${new Date().toISOString()}] ${participant.name}: ${t.transcript}\n`;
         await appendFile(room.file, line).catch((e) => console.error("transcript write:", e.message));
       }
-      room.transcript.push(`${participant.name}: ${t.transcript}`);
+      addTurn(room.state, participant.name, t.transcript);
       mediator.pendingLines++;
       scheduleMediator();
     } else {
@@ -336,7 +326,7 @@ function openStt(participant) {
 
 async function goLive() {
   room.live = true;
-  room.transcript = [];
+  room.state = createState();
   mediator.pendingLines = 0;
   mediator.lastSpokeAt = 0;
   await mkdir(transcriptsDir, { recursive: true });
