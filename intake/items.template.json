@@ -1,0 +1,12 @@
+{
+  "_comment": "IPIP-50 item bank. Populate from ipip.ori.org (IPIP items are public domain). 50 rows: 10 per domain, each keyed + or -. Domain names must match DOMAINS in schema.js exactly. VERIFY THE KEYING — a flipped reverse-key silently inverts an entire domain.",
+  "_version": "intake-v1",
+  "_selfTest": "Answer every item 5. If the resulting domain scores are all 50, your keying is wrong — reverse-keyed items should pull scores apart.",
+  "items": [
+    { "id": 1, "domain": "extraversion", "keyed": "+", "text": "" },
+    { "id": 2, "domain": "agreeableness", "keyed": "-", "text": "" },
+    { "id": 3, "domain": "conscientiousness", "keyed": "+", "text": "" },
+    { "id": 4, "domain": "emotional_stability", "keyed": "-", "text": "" },
+    { "id": 5, "domain": "openness", "keyed": "+", "text": "" }
+  ]
+}
