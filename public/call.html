@@ -8,8 +8,11 @@
     :root { color-scheme: dark; }
     body { font-family: system-ui, sans-serif; background: #0e1116; color: #e6e6e6; max-width: 720px; margin: 0 auto; padding: 1.5rem 1rem; }
     h1 { font-size: 1.3rem; margin-bottom: 1rem; }
-    #join { display: flex; gap: 0.5rem; }
-    input, button { font-size: 1rem; padding: 0.6rem 1rem; border-radius: 8px; border: 1px solid #333; background: #171b22; color: #e6e6e6; }
+    #join { display: flex; flex-direction: column; gap: 0.5rem; max-width: 420px; }
+    #join .row { display: flex; gap: 0.5rem; }
+    input, button, textarea { font-size: 1rem; padding: 0.6rem 1rem; border-radius: 8px; border: 1px solid #333; background: #171b22; color: #e6e6e6; font-family: inherit; }
+    textarea { resize: vertical; min-height: 4.5rem; }
+    #join label { font-size: 0.85rem; color: #9aa4b2; }
     button { cursor: pointer; }
     button:hover { background: #222835; }
     #stage { display: none; }
@@ -35,8 +38,12 @@
   <h1>Counsel — two-person call</h1>
 
   <div id="join">
-    <input id="name" placeholder="Your name" maxlength="32" autocomplete="off" />
-    <button id="joinBtn">Join call</button>
+    <div class="row">
+      <input id="name" placeholder="Your name" maxlength="32" autocomplete="off" />
+      <button id="joinBtn">Join call</button>
+    </div>
+    <label for="profile">Context for the mediator, about yourself (optional — only what you write here is shared)</label>
+    <textarea id="profile" maxlength="2000" placeholder="e.g. I tend to go quiet when things get tense, I care most about finding a fair split..."></textarea>
   </div>
 
   <div id="stage">
@@ -57,12 +64,23 @@
     const interimEls = {};       // name -> element for in-progress line
 
     /* ── join flow ─────────────────────────────────────────────── */
+    $("name").addEventListener("blur", async () => {
+      const name = $("name").value.trim();
+      if (!name || $("profile").value.trim()) return;
+      try {
+        const res = await fetch(`/profile?user=${encodeURIComponent(name)}`);
+        const { profile } = await res.json();
+        if (profile) $("profile").value = profile;
+      } catch {}
+    });
+
     $("joinBtn").onclick = () => {
       const name = $("name").value.trim();
       if (!name) return;
       myName = name;
+      const profile = $("profile").value.trim();
       ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/callws`);
-      ws.onopen = () => ws.send(JSON.stringify({ type: "join", name }));
+      ws.onopen = () => ws.send(JSON.stringify({ type: "join", name, profile }));
       ws.onmessage = onMessage;
       ws.onclose = () => { $("status").textContent = "Disconnected."; stopAudio(); live = false; };
       $("join").style.display = "none";

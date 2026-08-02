@@ -1,5 +1,5 @@
 import http from "node:http";
-import { readFile, appendFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, appendFile, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
@@ -37,6 +37,34 @@ function getHistory(userId) {
   }
   return histories.get(userId);
 }
+
+// Self-provided profiles: short bios/context participants type in about
+// themselves, keyed by name. Never populated from any source other than the
+// participant's own direct input — no scraping, no third-party lookups.
+const dataDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "data");
+const profilesFile = path.join(dataDir, "profiles.json");
+const profiles = new Map();
+
+async function loadProfiles() {
+  try {
+    const raw = await readFile(profilesFile, "utf8");
+    for (const [name, text] of Object.entries(JSON.parse(raw))) profiles.set(name, text);
+  } catch {}
+}
+
+async function saveProfiles() {
+  await mkdir(dataDir, { recursive: true });
+  await writeFile(profilesFile, JSON.stringify(Object.fromEntries(profiles), null, 2));
+}
+
+async function setProfile(name, text) {
+  const trimmed = String(text ?? "").trim().slice(0, 2000);
+  if (trimmed) profiles.set(name, trimmed);
+  else profiles.delete(name);
+  await saveProfiles();
+}
+
+await loadProfiles();
 
 async function chat(userId, message) {
   const history = getHistory(userId);
@@ -95,6 +123,26 @@ const server = http.createServer(async (req, res) => {
       const history = getHistory(userId).filter((m) => m.role !== "system");
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(history));
+      return;
+    }
+
+    if (req.method === "GET" && req.url.startsWith("/profile")) {
+      const userId = new URL(req.url, "http://x").searchParams.get("user");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ profile: (userId && profiles.get(userId)) ?? "" }));
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/profile") {
+      const { userId, profile } = await readBody(req);
+      if (!userId) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "userId is required" }));
+        return;
+      }
+      await setProfile(userId, profile);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
 
@@ -182,10 +230,13 @@ const MEDIATOR_PROMPT =
   "misunderstanding, making sure both sides are heard, summarizing progress, or " +
   "nudging a stalled conversation forward with a brief question. You receive the " +
   "recent transcript; one speaker may dominate — gently invite the quieter one in. " +
-  "If speaking now would add nothing, reply with exactly PASS. Otherwise reply with " +
-  "the words you would say aloud: one or two short, neutral, conversational " +
-  "sentences. Never take sides, never lecture, and never include stage directions " +
-  "or speaker tags.";
+  "You may also receive short context each participant typed about themselves " +
+  "before the call — treat it only as that person's own framing of themselves, " +
+  "never as objective fact, and never repeat it back verbatim or make the other " +
+  "participant feel surveilled. If speaking now would add nothing, reply with " +
+  "exactly PASS. Otherwise reply with the words you would say aloud: one or two " +
+  "short, neutral, conversational sentences. Never take sides, never lecture, and " +
+  "never include stage directions or speaker tags.";
 
 // Custom instructions live in a local file so they can be edited without
 // touching code or restarting the server — it's re-read on every interjection.
@@ -248,6 +299,17 @@ async function mediatorConsider() {
   mediator.busy = true;
   mediator.pendingLines = 0;
   try {
+    const bioContextKey = "Participant context (self-provided, not verified)";
+    const bios = [...room.participants.keys()]
+      .map((name) => {
+        const bio = profiles.get(name);
+        return bio ? `${name} (self-provided, before the call): ${bio}` : null;
+      })
+      .filter(Boolean)
+      .join("\n");
+    if (bios) room.state.context[bioContextKey] = bios;
+    else delete room.state.context[bioContextKey];
+
     const systemPrompt = await loadMediatorPrompt();
     const messages = buildMessages(systemPrompt, room.state);
     const raw = await callLLM({ messages, apiKey: API_KEY, model: MODEL });
@@ -393,6 +455,9 @@ callWss.on("connection", (ws) => {
       if (!name) return ws.send(JSON.stringify({ type: "error", message: "Name required." }));
       if (room.participants.size >= 2) return ws.send(JSON.stringify({ type: "error", message: "Room is full." }));
       if (room.participants.has(name)) return ws.send(JSON.stringify({ type: "error", message: "Name already taken." }));
+      if (typeof msg.profile === "string") {
+        setProfile(name, msg.profile).catch((e) => console.error("setProfile:", e.message));
+      }
       me = { name, ws, stt: null, pendingAudio: [], lastInterim: "" };
       room.participants.set(name, me);
       broadcast(roomState());
