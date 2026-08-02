@@ -132,9 +132,24 @@ html, body {
 
 .join {
   display: flex;
-  gap: 0.6rem;
+  flex-direction: column;
+  gap: 1.1rem;
+  width: 100%;
+  align-items: center;
+}
+.joinRow {
+  display: flex;
+  gap: 1rem;
   width: 100%;
   justify-content: center;
+  flex-wrap: wrap;
+}
+.partnerCol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 200px;
 }
 .join input {
   flex: 1;
@@ -156,4 +171,34 @@ html, body {
   background: var(--ink);
   color: #fff;
   cursor: pointer;
+}
+.join button.intakeBtn {
+  font-size: 0.85rem;
+  padding: 0.45rem 1rem;
+  background: none;
+  border: 1px solid #e3e3de;
+  color: var(--ink-soft);
+}
+.join button.intakeBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.intakeSummary {
+  border-radius: 12px;
+  background: #f5f5f2;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  text-align: left;
+}
+.intakeDone {
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 0.25rem;
+}
+.intakeLine {
+  display: flex;
+  justify-content: space-between;
+  text-transform: capitalize;
+  gap: 0.5rem;
 }

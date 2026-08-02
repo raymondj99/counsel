@@ -1,0 +1,12 @@
+{
+  "_version": "intake-v1",
+  "_source": "IPIP-50 (Goldberg's 50-item Big-Five Factor Markers), public domain via ipip.ori.org",
+  "_note": "Trimmed to 5 items (1 per domain) for early UI development. Swap in the full 50 (10 per domain) before this ships — scoreIPIP50 will prorate a 1-item domain and warn loudly, which is fine for dev but not for a real score.",
+  "items": [
+    { "id": 1, "domain": "extraversion", "keyed": "+", "text": "Am the life of the party." },
+    { "id": 2, "domain": "agreeableness", "keyed": "-", "text": "Feel little concern for others." },
+    { "id": 3, "domain": "conscientiousness", "keyed": "+", "text": "Am always prepared." },
+    { "id": 4, "domain": "emotional_stability", "keyed": "-", "text": "Get stressed out easily." },
+    { "id": 5, "domain": "openness", "keyed": "+", "text": "Have a rich vocabulary." }
+  ]
+}
