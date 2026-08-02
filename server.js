@@ -170,6 +170,7 @@ const room = {
   state: createState(),// shared conversation state (turns + derived context), same shape as evals
   enrolling: null,     // name currently being asked to introduce themselves, or null
   lastSpeaker: null,   // most recently attributed partner, fallback when a profile is ambiguous
+  baselineCounts: null,// speakerCounts snapshot at enrollment end; wrap-up budget counts from here
 };
 
 // ── Mediator agent: a third, virtual participant that listens to the live
@@ -179,23 +180,30 @@ const room = {
 // the two-person room limit.
 
 const MEDIATOR = "Mediator";
-const TTS_URL = "https://api.inworld.ai/tts/v1/voice";
+const TTS_STREAM_URL = "https://api.inworld.ai/tts/v1/voice:stream";
 const TTS_MODEL = process.env.INWORLD_TTS_MODEL ?? "inworld-tts-2";
 const TTS_VOICE = process.env.INWORLD_TTS_VOICE ?? "Eleanor";
 // tts-2 ignores `temperature` and takes a delivery preset instead: STABLE |
 // BALANCED | CREATIVE. Natural-language steering is passed as a bracketed tag
 // inline in the text — it shapes delivery and is not spoken aloud.
-const TTS_DELIVERY = process.env.INWORLD_TTS_DELIVERY ?? "BALANCED";
-// The steering tag already slows delivery on its own, so the rate only trims a
-// little more off the top — together they land near 2.7 words/sec against an
-// unsteered baseline of 3.4. Slowing both harder reads as sedated, not calm.
-const TTS_RATE = Number(process.env.INWORLD_TTS_RATE ?? 0.95);   // [0.5, 1.5]
+// CREATIVE gives the widest prosodic variance — paired with an expressive
+// steering tag it trades the flat "meditation app" read for an engaged one.
+const TTS_DELIVERY = process.env.INWORLD_TTS_DELIVERY ?? "CREATIVE";
+// The steering tag slows delivery on its own, so the rate compensates on top —
+// together they land near 3.3 words/sec against an unsteered baseline of 3.4:
+// still the calm register, without dragging. Pushing both further reads as
+// rushed; pulling both down reads as sedated.
+const TTS_RATE = Number(process.env.INWORLD_TTS_RATE ?? 1.05);   // [0.5, 1.5]
 const TTS_STEER = process.env.INWORLD_TTS_STEER ??
-  "speak gently and warmly, with a calm, low pitch and natural pauses, as a therapist would";
+  "speak warmly and expressively, with lively varied intonation and natural emphasis, " +
+  "at an easy conversational pace, like an engaged therapist leaning in";
 
 // Therapist pacing: let a real pause open up before speaking, and stay out of
 // the way for a good while afterward. All tunable without editing code.
 const MEDIATOR_SILENCE_MS = Number(process.env.MEDIATOR_SILENCE_MS ?? 2500);   // lull before considering
+const MEDIATOR_REPLY_SILENCE_MS = Number(process.env.MEDIATOR_REPLY_SILENCE_MS ?? 1500); // lull when answering the Mediator
+const MEDIATOR_HANGING_MS = Number(process.env.MEDIATOR_HANGING_MS ?? 2500);   // extra wait when a line ends mid-thought
+const MEDIATOR_WRAP_TURNS = Number(process.env.MEDIATOR_WRAP_TURNS ?? 3);      // total post-intro turns before wrapping up (0 = never)
 const MEDIATOR_COOLDOWN_MS = Number(process.env.MEDIATOR_COOLDOWN_MS ?? 20000); // min gap between interjections
 const MEDIATOR_MIN_LINES = Number(process.env.MEDIATOR_MIN_LINES ?? 2);        // new final lines before considering
 
@@ -242,10 +250,28 @@ const MEDIATOR_PROMPT = [
   "than assume. Your own earlier lines appear in the transcript as \"Mediator\";",
   "read them so you do not repeat yourself.",
   "",
-  "What you never do: take a side, decide who is right, give advice, prescribe a",
-  "solution, diagnose, moralize, cheerlead, or explain what you are doing. No",
-  "therapy cliches (\"I hear you\", \"holding space\", \"let's unpack that\"). No",
-  "summarizing for its own sake.",
+  "What you never do: take a side, decide who is right, impose a solution of",
+  "your own invention, diagnose, moralize, cheerlead, or explain what you are",
+  "doing. No therapy cliches (\"I hear you\", \"holding space\", \"let's unpack",
+  "that\"). No summarizing for its own sake.",
+  "",
+  "You are not only there to reflect — you are there to help them land somewhere.",
+  "A session that circles is a session that failed; bend the conversation toward",
+  "one of: a resolution, a concrete action, or an agreement both can live with.",
+  "- Once both people have been heard on a topic, stop reflecting and start",
+  "  converging: name the common ground you actually heard, or the trade that is",
+  "  already on the table.",
+  "- Ask for concreteness: \"What would you want to happen next?\" \"<name>, what",
+  "  could you offer here?\"",
+  "- The solution must come from them — but once they have put pieces on the",
+  "  table, you assemble and test it: \"It sounds like you could both live with",
+  "  X. Is that right?\"",
+  "- When something is agreed, say it back plainly so it sticks — \"So the plan",
+  "  is: X.\" — then get out of the way.",
+  "- If they drift to a new grievance before settling the current one, bring",
+  "  them back: one thing at a time.",
+  "A Context block above the transcript tells you what stage the session is in —",
+  "let it set how hard you push toward landing.",
   "",
   "You will be given the recent transcript. You do not need to speak after every",
   "exchange — letting them talk is often right. But when there is real feeling in",
@@ -285,7 +311,11 @@ const MEDIATOR_PROMPT_FILE = path.join(
 
 const loadMediatorPrompt = () => loadPrompt(MEDIATOR_PROMPT_FILE, MEDIATOR_PROMPT);
 
-const mediator = { timer: null, busy: false, lastSpokeAt: 0, pendingLines: 0, lastReplyNorm: "" };
+const mediator = {
+  timer: null, busy: false, lastSpokeAt: 0, pendingLines: 0,
+  lastReplyNorm: "", wrapped: false,
+  speaking: false,   // true while TTS audio is being relayed; the mic is gated then
+};
 
 function wavToPcm(buf) {
   // Inworld TTS returns a WAV file; strip the header so we can relay raw PCM16.
@@ -294,59 +324,157 @@ function wavToPcm(buf) {
   return idx === -1 ? buf : buf.subarray(idx + 8);
 }
 
-async function mediatorTts(text) {
-  // The steering tag shapes delivery only — it is stripped by the model, so it
-  // never reaches the listener or the transcript. LINEAR16 @16kHz (not MP3) is
-  // required: mediatorSpeak relays raw PCM straight to the browser's 16kHz
-  // AudioContext.
-  const res = await fetch(TTS_URL, {
+// Stream TTS and relay to the client as chunks arrive: first audio reaches the
+// phone ~200ms after the request instead of after full synthesis (~2s). The
+// relay stays paced at ~100ms per slice so speaking levels animate the orb
+// naturally — the win is the head start, not the pacing. The steering tag
+// shapes delivery only (the model strips it), and LINEAR16 @16kHz (not MP3) is
+// required: raw PCM goes straight to the browser's 16kHz AudioContext.
+async function mediatorSpeakStream(text) {
+  // Gate the mic for the whole utterance: while the Mediator's voice is coming
+  // out of the phone's speaker, nothing the mic hears is trustworthy — it's the
+  // Mediator's own voice, or speech that will arrive garbled mid-playback.
+  mediator.speaking = true;
+  try {
+    await mediatorSpeakStreamInner(text);
+    // Keep the gate up briefly while the client's buffered audio drains.
+    await new Promise((r) => setTimeout(r, 700));
+  } finally {
+    mediator.speaking = false;
+  }
+}
+
+async function mediatorSpeakStreamInner(text) {
+  const res = await fetch(TTS_STREAM_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Basic ${API_KEY}` },
     body: JSON.stringify({
       text: `[${TTS_STEER}] ${text}`,
-      voiceId: TTS_VOICE,
-      modelId: TTS_MODEL,
-      audioConfig: {
-        audioEncoding: "LINEAR16",
-        sampleRateHertz: SAMPLE_RATE,
-        speakingRate: TTS_RATE,
+      voice_id: TTS_VOICE,
+      model_id: TTS_MODEL,
+      audio_config: {
+        audio_encoding: "LINEAR16",
+        sample_rate_hertz: SAMPLE_RATE,
+        speaking_rate: TTS_RATE,
       },
-      deliveryMode: TTS_DELIVERY,
+      delivery_mode: TTS_DELIVERY,
       language: "AUTO",
     }),
   });
-  if (!res.ok) throw new Error(`TTS ${res.status}: ${await res.text()}`);
-  const data = await res.json();
-  const b64 = data.audioContent ?? data.result?.audioContent;
-  if (!b64) throw new Error("TTS returned no audio");
-  return wavToPcm(Buffer.from(b64, "base64"));
-}
+  if (!res.ok || !res.body) throw new Error(`TTS ${res.status}: ${await res.text()}`);
 
-async function mediatorSpeak(pcm) {
-  // Relay in ~100ms chunks so speaking levels animate the avatar naturally.
-  const chunkBytes = (SAMPLE_RATE / 10) * 2;
-  for (let off = 0; off < pcm.length && room.live; off += chunkBytes) {
-    const data = pcm.subarray(off, off + chunkBytes).toString("base64");
-    broadcast({ type: "audio", from: MEDIATOR, data });
-    broadcast({ type: "level", user: MEDIATOR, level: +pcmLevel(data).toFixed(3) });
-    await new Promise((r) => setTimeout(r, 95));
+  const sliceBytes = (SAMPLE_RATE / 10) * 2;   // 100ms of PCM16
+  let pending = Buffer.alloc(0);               // decoded PCM waiting to be relayed
+  let done = false;
+
+  const relay = (async () => {
+    while (room.live && (!done || pending.length)) {
+      if (pending.length) {
+        const slice = pending.subarray(0, sliceBytes);
+        pending = pending.subarray(slice.length);
+        const data = slice.toString("base64");
+        broadcast({ type: "audio", from: MEDIATOR, data });
+        broadcast({ type: "level", user: MEDIATOR, level: +pcmLevel(data).toFixed(3) });
+      }
+      await new Promise((r) => setTimeout(r, 95));
+    }
+  })();
+
+  // NDJSON reader: one JSON object per line, each with a base64 audio chunk
+  // (WAV-framed — wavToPcm strips the header).
+  let ndjson = "";
+  const takeLine = (line) => {
+    if (!line.trim()) return;
+    let b64;
+    try { b64 = JSON.parse(line).result?.audioContent; } catch { return; }
+    if (b64) pending = Buffer.concat([pending, wavToPcm(Buffer.from(b64, "base64"))]);
+  };
+  for await (const raw of res.body) {
+    if (!room.live) break;
+    ndjson += Buffer.from(raw).toString("utf8");
+    let nl;
+    while ((nl = ndjson.indexOf("\n")) !== -1) {
+      takeLine(ndjson.slice(0, nl));
+      ndjson = ndjson.slice(nl + 1);
+    }
   }
+  takeLine(ndjson);
+  done = true;
+  await relay;
 }
 
-function scheduleMediator() {
+// Is the newest speech a direct response to the Mediator? True when the
+// Mediator spoke within the last few turns and a participant has spoken since.
+// In that case the usual patience rules don't apply: someone answered the
+// therapist's question and is waiting — a 20s cooldown there reads as the
+// Mediator ignoring them.
+function answeringMediator() {
+  const turns = room.state.turns;
+  const recent = turns.slice(-4);
+  const medIdx = recent.findLastIndex((t) => t.speaker === MEDIATOR);
+  return medIdx !== -1 && recent.slice(medIdx + 1).some((t) => t.speaker !== MEDIATOR);
+}
+
+// A final that ends mid-thought — trailing conjunction, comma, or no closing
+// punctuation — usually means the speaker paused to think, not finished. Give
+// them extra room before treating the turn as over.
+function endsMidThought(text) {
+  const t = text.trim();
+  if (!t) return false;
+  return /[,—:;-]$/.test(t) ||
+    /\b(?:and|but|so|or|because|like|well|i mean|you know)[.…]?$/i.test(t) ||
+    !/[.?!…]$/.test(t);
+}
+
+function scheduleMediator(lastFinalText = "") {
   if (mediator.timer) clearTimeout(mediator.timer);
+  let lull = answeringMediator() ? MEDIATOR_REPLY_SILENCE_MS : MEDIATOR_SILENCE_MS;
+  if (lastFinalText && endsMidThought(lastFinalText)) lull += MEDIATOR_HANGING_MS;
   mediator.timer = setTimeout(() => {
     mediatorConsider().catch((e) => console.error("mediator:", e.message));
-  }, MEDIATOR_SILENCE_MS);
+  }, lull);
+}
+
+// Per-partner turns spoken since the intro round ended (enrollment lines are
+// excluded via the baseline snapshot taken when enrollment completes).
+function effectiveTurns(name) {
+  return (room.state.speakerCounts[name] ?? 0) - (room.baselineCounts?.[name] ?? 0);
 }
 
 async function mediatorConsider() {
   if (!room.live || mediator.busy || room.enrolling) return;
-  if (mediator.pendingLines < MEDIATOR_MIN_LINES) return;
-  if (Date.now() - mediator.lastSpokeAt < MEDIATOR_COOLDOWN_MS) return;
+  // If speech was in flight moments ago, the pause isn't real yet — try again
+  // after a fresh lull rather than talking over someone mid-answer.
+  if (room.session?.lastInterimAt && Date.now() - room.session.lastInterimAt < 1200) {
+    scheduleMediator();
+    return;
+  }
+  // Sessions are turn-budgeted: after a handful of turns TOTAL across both
+  // partners, the Mediator wraps up — no patience gates apply to the closing.
+  const [pa, pb] = room.session.names;
+  const spokenTotal = effectiveTurns(pa) + effectiveTurns(pb);
+  const wrapDue = MEDIATOR_WRAP_TURNS > 0 && spokenTotal >= MEDIATOR_WRAP_TURNS;
+  if (wrapDue && mediator.wrapped) return;
+  if (!wrapDue) {
+    const answering = answeringMediator();
+    if (mediator.pendingLines < (answering ? 1 : MEDIATOR_MIN_LINES)) return;
+    if (!answering && Date.now() - mediator.lastSpokeAt < MEDIATOR_COOLDOWN_MS) return;
+  }
+  const consideredAt = Date.now();
   mediator.busy = true;
   mediator.pendingLines = 0;
   try {
+    // Session-stage steer, injected via the shared context block. The session
+    // is very short by design (MEDIATOR_WRAP_TURNS turns total), so push toward
+    // the heart of the matter from the first exchange — then close on time.
+    room.state.context.stage = wrapDue
+      ? "TIME TO CLOSE. This is your final turn and you must not reply PASS: in at " +
+        "most three short sentences, name what each person said they needed, state " +
+        "the agreement or single concrete next step that emerged, and warmly close " +
+        "the session."
+      : `This is a very short session — only ${MEDIATOR_WRAP_TURNS} speaking turns in ` +
+        "total before it must close. Get to the heart of it immediately and steer " +
+        "toward one concrete agreement or next step; there is no room to circle.";
     const systemPrompt = await loadMediatorPrompt();
     const messages = buildMessages(systemPrompt, room.state);
     const raw = await callLLM({ messages, apiKey: API_KEY, model: MODEL });
@@ -360,11 +488,32 @@ async function mediatorConsider() {
       .replace(/^["“”']+|["“”']+$/g, "")
       .replace(/\s+/g, " ")
       .trim();
+    if (wrapDue) {
+      // Closing turn: never silent, never talked out of it. If the model
+      // passed anyway, fall back to a plain goodbye.
+      const closing = (decision.speak && reply) ||
+        `Thank you both — this feels like a good place to pause. ${pa}, ${pb}, take what you agreed on today and be gentle with each other.`;
+      if (!room.live) return;
+      console.log(`Mediator wrapping up: ${closing}`);
+      mediator.wrapped = true;
+      await mediatorSay(closing);
+      await new Promise((r) => setTimeout(r, 1500));
+      await endCall();
+      return;
+    }
     if (!decision.speak || !reply) {
       console.log("Mediator considered, passed.");
       return;
     }
     if (!room.live) return;
+    // Someone resumed speaking while the LLM was thinking — their answer isn't
+    // done, so hold this interjection instead of talking over them. Restore the
+    // line credit so the next lull can still act.
+    if (room.session?.lastInterimAt > consideredAt) {
+      mediator.pendingLines++;
+      console.log("Mediator held back — participant resumed speaking.");
+      return;
+    }
     console.log(`Mediator interjecting: ${reply}`);
     await mediatorSay(reply);
   } finally {
@@ -383,8 +532,7 @@ async function mediatorSay(text) {
   if (room.file) {
     await appendFile(room.file, `[${new Date().toISOString()}] ${MEDIATOR}: ${text}\n`).catch(() => {});
   }
-  const pcm = await mediatorTts(text);
-  await mediatorSpeak(pcm);
+  await mediatorSpeakStream(text);
   mediator.lastSpokeAt = Date.now();
 }
 
@@ -487,7 +635,7 @@ async function runIntro() {
   enroll.bestLen = 0;
   await mediatorSay(
     `Welcome, ${a} and ${b}. Before we start, I'd like to hear each of your voices. ` +
-    `${a}, would you begin — just tell me in a sentence how you're arriving today.`,
+    `${a}, would you begin — just tell me in a sentence how you're feeling today.`,
   );
 }
 
@@ -497,9 +645,11 @@ function enrollHeard(text, profile) {
     enroll.bestLen = text.length;
   }
   if (enroll.timer) clearTimeout(enroll.timer);
+  // A mid-thought ending gets extra room, same as in the main session.
+  const wait = ENROLL_ADVANCE_MS + (text && endsMidThought(text) ? MEDIATOR_HANGING_MS : 0);
   enroll.timer = setTimeout(() => {
     advanceIntro().catch((e) => console.error("intro:", e.message));
-  }, ENROLL_ADVANCE_MS);
+  }, wait);
 }
 
 async function advanceIntro() {
@@ -515,6 +665,8 @@ async function advanceIntro() {
     await mediatorSay(`Thank you, ${a}. ${b}, how about you?`);
   } else {
     room.enrolling = null;
+    // Snapshot turn counts so the wrap-up budget only counts what follows.
+    room.baselineCounts = { ...room.state.speakerCounts };
     console.log(`Enrollment done. Profile similarity between partners: ${
       profileSimilarity(s.profiles[a], s.profiles[b]).toFixed(3)} (lower = easier to tell apart)`);
     await mediatorSay(`Thank you both. The room is yours — I'll mostly listen.`);
@@ -551,6 +703,11 @@ function openStt(session) {
 
     if (!t.isFinal) {
       session.lastInterim = t.transcript;
+      session.lastInterimAt = Date.now();
+      // Someone is mid-speech: push back any pending advance so nobody gets
+      // talked over or cut off between sentences.
+      if (mediator.timer) scheduleMediator();
+      if (room.enrolling && enroll.timer) enrollHeard("", null);
       broadcast({ type: "transcript", user: interimAs, text: t.transcript, final: false });
       return;
     }
@@ -563,6 +720,19 @@ function openStt(session) {
     }
 
     if (room.enrolling) {
+      // Anything finalized while the Mediator is still talking is speech from
+      // before the question was asked (or echo of the greeting itself) — it is
+      // not the answer. Drop it.
+      if (mediator.speaking) {
+        broadcast({ type: "transcript", user: room.enrolling, text: "", final: true });
+        return;
+      }
+      // A stray blip — a cough, a fragment, room noise — must not enroll a
+      // voice profile or advance the intro. Require a substantive line.
+      if (normText(t.transcript).length < 6) {
+        broadcast({ type: "transcript", user: room.enrolling, text: "", final: true });
+        return;
+      }
       const who = room.enrolling;
       broadcast({ type: "transcript", user: who, text: t.transcript, final: true });
       if (room.file) {
@@ -583,7 +753,7 @@ function openStt(session) {
     }
     addTurn(room.state, who, t.transcript);
     mediator.pendingLines++;
-    scheduleMediator();
+    scheduleMediator(t.transcript);
   });
   stt.on("error", (e) => console.error("STT error:", e.message));
   return stt;
@@ -593,9 +763,11 @@ async function goLive() {
   room.live = true;
   room.state = createState();
   room.lastSpeaker = null;
+  room.baselineCounts = null;
   mediator.pendingLines = 0;
   mediator.lastSpokeAt = 0;
   mediator.lastReplyNorm = "";
+  mediator.wrapped = false;
   await mkdir(transcriptsDir, { recursive: true });
   room.file = path.join(transcriptsDir, `call-${new Date().toISOString().replace(/[:.]/g, "-")}.log`);
   const names = room.session.names.join(", ");
@@ -669,13 +841,17 @@ callWss.on("connection", (ws) => {
         return ws.send(JSON.stringify({ type: "error", message: "A session is already in progress." }));
       }
       mine = true;
-      room.session = { ws, names, stt: null, pendingAudio: [], lastInterim: "", profiles: {} };
+      room.session = { ws, names, stt: null, pendingAudio: [], lastInterim: "", lastInterimAt: 0, profiles: {} };
       goLive().catch((e) => console.error("goLive:", e.message));
       return;
     }
 
     if (msg.type === "audio" && mine && room.live && msg.data) {
       const s = room.session;
+      // While the Mediator is speaking, the mic mostly hears the Mediator —
+      // drop the audio entirely (not even queued) so early speech, room noise,
+      // and speaker echo can't glitch enrollment or the transcript.
+      if (mediator.speaking) return;
       broadcast({ type: "level", user: room.lastSpeaker ?? s.names[0], level: +pcmLevel(msg.data).toFixed(3) });
       if (s.stt?.readyState === WebSocket.OPEN) {
         s.stt.send(JSON.stringify({ audioChunk: { content: msg.data } }));
