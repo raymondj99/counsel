@@ -132,20 +132,37 @@ html, body {
 
 .join {
   display: flex;
-  gap: 0.6rem;
+  flex-direction: column;
+  gap: 1.1rem;
+  width: 100%;
+  align-items: center;
+}
+.joinRow {
+  display: flex;
+  gap: 0.7rem;
   width: 100%;
   justify-content: center;
+  align-items: flex-start;
+}
+.partnerCol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 160px;
 }
 .join input {
-  flex: 1;
-  max-width: 200px;
-  font-size: 0.98rem;
-  padding: 0.65rem 1rem;
+  width: 100%;
+  min-width: 0;
+  font-size: 0.9rem;
+  padding: 0.6rem 0.8rem;
   border-radius: 999px;
   border: 1px solid #e3e3de;
   background: #fbfbf9;
   color: var(--ink);
   outline: none;
+  box-sizing: border-box;
 }
 .join input:focus { border-color: var(--orb-b); }
 .join button {
@@ -156,4 +173,39 @@ html, body {
   background: var(--ink);
   color: #fff;
   cursor: pointer;
+}
+.join button.intakeBtn {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 0.78rem;
+  padding: 0.4rem 0.5rem;
+  background: none;
+  border: 1px solid #e3e3de;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.join button.intakeBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.intakeSummary {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background: #f5f5f2;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  text-align: left;
+}
+.intakeDone {
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 0.25rem;
+}
+.intakeLine {
+  display: flex;
+  justify-content: space-between;
+  text-transform: capitalize;
+  gap: 0.5rem;
 }

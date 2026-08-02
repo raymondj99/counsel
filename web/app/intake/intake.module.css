@@ -1,0 +1,49 @@
+.formBody {
+  flex: 1;
+  width: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: 0.25rem 0.1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.field label {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.field input,
+.select {
+  padding: 0.65rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid #e3e3de;
+  background: #fbfbf9;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--ink);
+  outline: none;
+}
+.field input:focus,
+.select:focus {
+  border-color: var(--orb-b, #e18fa9);
+}
+
+.error {
+  font-size: 0.82rem;
+  color: #c23b3b;
+}
+
+.doneWrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  text-align: center;
+}
